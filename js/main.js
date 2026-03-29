@@ -1,0 +1,108 @@
+import { state, DOM, updateContextUI } from './state.js';
+import { handleSend } from './handlers.js';
+import { setGenerating, toggleSidebar, appendMessage } from './ui.js';
+import { savePersona, getHistory, logout } from './api.js';
+
+// Init
+document.addEventListener('DOMContentLoaded', () => {
+    // Add mobile toggle elements to DOM
+    if (!document.getElementById('mobile-toggle')) {
+        const toggle = document.createElement('div');
+        toggle.id = 'mobile-toggle';
+        toggle.innerHTML = '☰';
+        document.body.appendChild(toggle);
+        DOM.mobileToggle = toggle;
+        
+        const backdrop = document.createElement('div');
+        backdrop.id = 'sidebar-backdrop';
+        document.body.appendChild(backdrop);
+        DOM.sidebarBackdrop = backdrop;
+        
+        toggle.onclick = () => toggleSidebar();
+        backdrop.onclick = () => toggleSidebar(false);
+    }
+    
+    // Load history
+    getHistory().then(history => {
+        if (history && history.length > 0) {
+            state.messages = history;
+            DOM.chatWindow.innerHTML = '';
+            state.messages.forEach(msg => {
+                const isImage = msg.content.startsWith('Image generated:');
+                const content = isImage ? msg.content.replace('Image generated: ', '') : msg.content;
+                appendMessage(msg.role === 'user' ? 'user' : 'ai', content, isImage);
+            });
+        }
+    });
+
+    // Logout handling
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) logoutBtn.onclick = logout;
+    
+    // Send message handling
+    DOM.sendBtn.onclick = handleSend;
+    DOM.userInput.onkeydown = (e) => {
+        if (e.key === 'Enter') handleSend();
+    };
+    
+    DOM.stopBtn.onclick = () => {
+        if (state.abortController) state.abortController.abort();
+        setGenerating(false);
+    };
+    
+    DOM.clearBtn.onclick = () => {
+        DOM.chatWindow.innerHTML = '';
+        state.messages = [];
+        state.contextSize = 0;
+        updateContextUI();
+        appendMessage('ai', 'Chat cleared.');
+    };
+    
+    DOM.modelSelect.onchange = (e) => {
+        const model = e.target.value;
+        if (model.includes('dolphin')) {
+             DOM.systemPrompt.value = "You are Dolphin, a helpful uncensored AI assistant.";
+        } else if (model.includes('gemma')) {
+             DOM.systemPrompt.value = "You are Gemma, a helpful AI assistant.";
+        } else if (model.includes('qwen')) {
+             DOM.systemPrompt.value = "You are a helpful and capable AI assistant.";
+        } else {
+             DOM.systemPrompt.value = "You are a helpful AI assistant.";
+        }
+    };
+    
+    DOM.savePersonaBtn.onclick = async () => {
+        const result = await savePersona(DOM.systemPrompt.value);
+        if (result) {
+            DOM.savePersonaBtn.textContent = 'Saved!';
+            setTimeout(() => DOM.savePersonaBtn.textContent = 'Save Persona', 2000);
+        }
+    };
+    
+    // Image Upload Handling
+    DOM.uploadBtn.onclick = () => DOM.imageUpload.click();
+    DOM.imageUpload.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (re) => {
+                DOM.imagePreview.src = re.target.result;
+                DOM.imagePreviewContainer.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+    
+    DOM.removeImageBtn.onclick = () => {
+        DOM.imageUpload.value = '';
+        DOM.imagePreview.src = '';
+        DOM.imagePreviewContainer.style.display = 'none';
+    };
+    
+    DOM.batchSizeSlider.oninput = (e) => {
+        DOM.batchSizeValue.textContent = e.target.value;
+    };
+    
+    // Initial UI state
+    updateContextUI();
+});

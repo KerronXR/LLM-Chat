@@ -1,5 +1,5 @@
 /**
- * Antigravity Local AI - State Management
+ * Veloxify Local AI - State Management
  */
 
 export const state = {

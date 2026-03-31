@@ -89,6 +89,7 @@ async function handleLlmGeneration() {
 }
 
 async function handleImageGeneration(prompt) {
+    state.abortController = new AbortController();
     try {
         const resolution = DOM.imageSizeSelect.value.split('x');
         const width = parseInt(resolution[0]);
@@ -104,9 +105,15 @@ async function handleImageGeneration(prompt) {
             await saveHistory(state.messages);
         } else if (data && data.error) {
             appendMessage('ai', data.error, false, true);
+        } else {
+            throw new Error('No response from image generator');
         }
     } catch (err) {
-        appendMessage('ai', 'Image generation error: ' + err.message, false, true);
+        if (err.name === 'AbortError') {
+            appendMessage('ai', '[Generation Stopped]', false, true);
+        } else {
+            appendMessage('ai', 'Image generation error: ' + err.message, false, true);
+        }
     } finally {
         setGenerating(false);
     }

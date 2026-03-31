@@ -12,7 +12,7 @@ def test_initial_state(page: Page):
     page.goto(INDEX_HTML)
     
     # Check title
-    expect(page).to_have_title("Antigravity Local AI | Uncensored")
+    expect(page).to_have_title("Veloxify Local AI | Uncensored")
     
     # Check default model
     model_select = page.locator("#model-select")

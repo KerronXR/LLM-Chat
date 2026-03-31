@@ -1,5 +1,5 @@
 /**
- * Antigravity Local AI - API Logic
+ * Veloxify Local AI - API Logic
  */
 import { state, DOM } from './state.js';
 

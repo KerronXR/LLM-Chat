@@ -41,7 +41,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if self.path == '/api/login':
                 if json.loads(raw).get('password') == PASSWORD:
                     t = secrets.token_hex(32); sessions[t] = int(time.time()); save_sessions()
-                    self.send_response(200); self.send_header('Set-Cookie', f'session_token={t}; HttpOnly; Path=/; Max-Age=2592000'); self.end_headers(); self.wfile.write(b'{"status":"ok"}')
+                    resp = b'{"status":"ok"}'
+                    self.send_response(200); self.send_header('Set-Cookie', f'session_token={t}; HttpOnly; Path=/; Max-Age=2592000'); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(resp))); self.end_headers(); self.wfile.write(resp)
                 else: self.send_error(401)
             elif not self.is_authenticated(): self.send_error(401)
             elif self.path == '/api/chat': self.handle_chat(raw)
@@ -53,7 +54,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             elif self.path == '/api/logout':
                 t = self.headers.get('Cookie', '').split('session_token=')[-1].split(';')[0] if 'session_token=' in self.headers.get('Cookie', '') else None
                 if t in sessions: del sessions[t]; save_sessions()
-                self.send_response(200); self.send_header('Set-Cookie', 'session_token=; Max-Age=0; Path=/'); self.end_headers()
+                self.send_response(200); self.send_header('Set-Cookie', 'session_token=; Max-Age=0; Path=/'); self.send_header('Content-Length', '0'); self.end_headers()
             elif self.path == '/save_persona':
                 with open(os.path.join(DIRECTORY, "persona.txt"), "wb") as f: f.write(raw)
                 self.send_response(200); self.end_headers()
@@ -84,25 +85,37 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             body["diffusion_task"] = "image_to_image"; body["strength"] = 0.5
         try:
             req = urllib.request.Request(f"http://localhost:{FASTSD_PORT}/api/generate", data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
-            with urllib.request.urlopen(req, timeout=120) as res:
+            with urllib.request.urlopen(req, timeout=600) as res:
                 rd = json.loads(res.read()); urls = []
                 for i, b64 in enumerate(rd.get('images', [])):
                     fn = f"gen_{int(time.time())}_{i}.png"
                     with open(os.path.join(IMAGES_DIR, fn), "wb") as f: f.write(base64.b64decode(b64))
                     urls.append(f"/images/{fn}")
-                self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(json.dumps({"urls": urls, "url": urls[0] if urls else None}).encode())
-        except Exception as e: self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(json.dumps({"error": str(e)}).encode())
+                resp_data = json.dumps({"urls": urls, "url": urls[0] if urls else None}).encode()
+                self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(resp_data))); self.end_headers(); self.wfile.write(resp_data)
+        except Exception as e:
+            error_msg = json.dumps({"error": str(e)}).encode()
+            logger.error(f"Image generation failed: {e}")
+            try:
+                self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(error_msg))); self.end_headers(); self.wfile.write(error_msg)
+            except: pass
 
     def handle_upscale(self, raw):
         data = json.loads(raw); init = data.get('image', '').split(',')[1] if ',' in data.get('image', '') else data.get('image', '')
         body = {"image": init, "mode": data.get('mode', 'aura_sr'), "scale_factor": 2, "strength": 0.3}
         try:
             req = urllib.request.Request(f"http://localhost:{FASTSD_PORT}/api/upscale", data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'})
-            with urllib.request.urlopen(req, timeout=180) as res:
+            with urllib.request.urlopen(req, timeout=300) as res:
                 rd = json.loads(res.read()); fn = f"upscale_{int(time.time())}.png"
                 with open(os.path.join(IMAGES_DIR, fn), "wb") as f: f.write(base64.b64decode(rd['image']))
-                self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(json.dumps({"url": f"/images/{fn}"}).encode())
-        except Exception as e: self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(json.dumps({"error": str(e)}).encode())
+                resp_data = json.dumps({"url": f"/images/{fn}"}).encode()
+                self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(resp_data))); self.end_headers(); self.wfile.write(resp_data)
+        except Exception as e:
+            error_msg = json.dumps({"error": str(e)}).encode()
+            logger.error(f"Image upscale failed: {e}")
+            try:
+                self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(error_msg))); self.end_headers(); self.wfile.write(error_msg)
+            except: pass
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True

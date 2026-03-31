@@ -110,3 +110,12 @@ taskkill /F /PID <PID>
 - **Architectural Cleanup**: Refactored `run_ui.py` to move core logic to `core.py`, adhering to the < 300 line project standard while improving maintenance.
 - **Stop/New Multi-Purpose Button**: Enhanced the chat input area by replacing the disabled "Stop" button with a "New" button during idle phases. Clicking "New" clears the current conversation, while the button dynamically switches to "Stop" during active generation to allow immediate termination.
 - **Robust Image Generation**: Increased the backend timeout for FastSD CPU requests to 10 minutes and individual image upscales to 5 minutes. Added `Content-Length` headers and improved protocol compliance to resolve "Failed to fetch" errors during long-running CPU generation tasks.
+- **Conversation Export**: Added a "Export Conversation" button to the sidebar. It allows users to quickly download their current chat history as a formatted, human-readable `.txt` file.
+
+### Test Files
+- `tests/test_server.py` — Server-side unit tests (endpoints, logging, process helpers)
+- `tests/test_ui.py` — Playwright UI tests (chat flow, context, persona, image gen)
+- `tests/test_export.py` — Playwright tests for the export conversation feature
+- `tests/test_images.py` — Playwright image UI element tests
+- `tests/test_image_chat.py` — Playwright tests for chat-driven image generation (keyword detection, Use My Image, error handling, sidebar cleanup)
+- `tests/test_mobile_responsiveness.py` — Playwright tests for mobile viewport layout (menu button spacing, sidebar toggle logic)

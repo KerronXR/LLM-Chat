@@ -1,5 +1,5 @@
 import { state, DOM, updateContextUI } from './state.js';
-import { handleSend, handleStopOrNew, handleClearChat } from './handlers.js';
+import { handleSend, handleStopOrNew, handleClearChat, handleExport } from './handlers.js';
 import { setGenerating, toggleSidebar, appendMessage } from './ui.js';
 
 import { savePersona, getHistory, logout } from './api.js';
@@ -47,6 +47,7 @@ DOM.userInput.onkeydown = (e) => {
 
 DOM.stopBtn.onclick = handleStopOrNew;
 DOM.clearBtn.onclick = handleClearChat;
+DOM.exportBtn.onclick = handleExport;
 
 function updateSystemPrompt(model) {
     if (model.includes('dolphin')) {

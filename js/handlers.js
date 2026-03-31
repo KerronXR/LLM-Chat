@@ -138,3 +138,29 @@ export function handleStopOrNew() {
         handleClearChat();
     }
 }
+
+export function handleExport() {
+    if (state.messages.length === 0) {
+        appendMessage('ai', 'Chat is empty, nothing to export.', false, true);
+        return;
+    }
+    
+    // Format messages as human-readable text
+    let exportText = "--- Veloxify AI Conversation Export ---\n";
+    exportText += `Date: ${new Date().toLocaleString()}\n\n`;
+    
+    state.messages.forEach(msg => {
+        const role = msg.role === 'user' ? 'User' : 'AI';
+        exportText += `${role}: ${msg.content}\n\n`;
+    });
+    
+    const blob = new Blob([exportText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `veloxify_conversation_${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+}

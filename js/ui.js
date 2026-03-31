@@ -43,7 +43,9 @@ export function appendMessage(role, content, isImage = false, isError = false) {
 export function setGenerating(generating = true) {
     state.isGenerating = generating;
     DOM.sendBtn.disabled = generating;
-    DOM.stopBtn.disabled = !generating;
+    DOM.stopBtn.textContent = generating ? 'Stop' : 'New';
+    // Ensure stop button is never disabled as it now doubles as 'New'
+    DOM.stopBtn.disabled = false;
     showProgress(generating);
     if (!generating) DOM.userInput.focus();
 }

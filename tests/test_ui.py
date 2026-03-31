@@ -16,11 +16,16 @@ def test_initial_state(page: Page):
     
     # Check default model
     model_select = page.locator("#model-select")
-    expect(model_select).to_have_value("dolphin-llama3:latest")
+    expect(model_select).to_have_value("gemma-3-12b-it:latest")
     
     # Check default system prompt
     system_prompt = page.locator("#system-prompt")
-    expect(system_prompt).to_have_value(re.compile(".*You are Dolphin.*"))
+    expect(system_prompt).to_have_value(re.compile(".*You are Gemma.*"))
+
+    # Check initial button state
+    stop_btn = page.locator("#stop-btn")
+    expect(stop_btn).to_have_text("New")
+    expect(stop_btn).to_be_enabled()
 
 def test_model_selection_updates_prompt(page: Page):
     page.goto(INDEX_HTML)
@@ -139,17 +144,35 @@ def test_stop_button_logic(page: Page):
     page.locator("#user-input").fill("Tell me a long story")
     send_btn.click()
     
-    # Stop button should be enabled
+    # Stop button should be enabled and say 'Stop'
     expect(stop_btn).to_be_enabled()
+    expect(stop_btn).to_be_visible()
+    expect(stop_btn).to_have_text("Stop")
     expect(send_btn).to_be_disabled()
     
     # Stop it
     stop_btn.click()
     
-    # UI should reset
+    # UI should reset: button should say 'New' and be enabled
     expect(send_btn).to_be_enabled()
-    expect(stop_btn).to_be_disabled()
+    expect(stop_btn).to_have_text("New")
+    expect(stop_btn).to_be_enabled()
     expect(page.locator("#chat-window")).to_contain_text("[Generation Stopped]")
+
+def test_new_button_clears_chat(page: Page):
+    page.goto(INDEX_HTML)
+    stop_btn = page.locator("#stop-btn")
+    chat_window = page.locator("#chat-window")
+    
+    # Initial state should say 'New'
+    expect(stop_btn).to_have_text("New")
+    
+    # Trigger 'New' (Clear)
+    stop_btn.click()
+    
+    # Check if cleared
+    expect(chat_window).to_contain_text("Chat cleared")
+
 
 def test_context_size_display(page: Page):
     page.goto(INDEX_HTML)

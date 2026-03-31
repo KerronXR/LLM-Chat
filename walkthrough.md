@@ -105,10 +105,7 @@ taskkill /F /PID <PID>
 - Ensure `llama-cpp-python` is updated to version 0.3.15 or newer. This is required for the new Gemma 3 architecture support.
 - Run `.venv\Scripts\python.exe setup_local_llm.py` to ensure the correct package versions are installed after any major model updates.
 
-## Recent Updates
-- **Gemma 3 Compatibility Fix**: Upgraded `llama-cpp-python` to 0.3.18 to resolve "Failed to load model" errors with Gemma 3 models. Updated `setup_local_llm.py` to ensure a minimum version of 0.3.15 is maintained.
-- **Streaming JSON Parsing Fix**: Resolved a critical JSON parse error in the frontend chat (often triggered when using Dolphin Llama 3) by configuring the local Python server to HTTP/1.1 for proper chunked transfer encoding, and implementing robust stream buffering in JS to correctly assemble fragmented network chunks.
-- **Added Image Resolutions**: Replaced unsafe image generation options with mathematically supported minimums such as 256x256 (Square) to prevent internal dimension errors in the SD backend.
-- **Connection Error Handling Fix**: Added graceful handling of `ConnectionAbortedError` (WinError 10053) in `run_ui.py` to prevent repeated terminal traceback spam when a user stops generation or closes the browser tab early.
-- **Mobile UI Overlap Fix**: Fixed mobile menu button overlapping with the chat container by adjusting the toggle position to top: 15px and increasing the chat container margin-top to 75px.
-- **Added Mobile Layout Tests**: Created a new test suite specifically for mobile responsiveness and UI spacing.
+- **Mobile UI Fixes**: Streamlined the status bar on mobile to hide redundant URLs (Server/Ollama) and emphasize the **Context Tracker**, ensuring it is visible even on small screens with bottom toolbars.
+- **Improved Context Tracking**: Resolved a bug where token counts were hardcoded to 0. The server now accurately calculates prompt and completion tokens using `llm.tokenize()`, providing real-time accuracy in the UI.
+- **Architectural Cleanup**: Refactored `run_ui.py` to move core logic to `core.py`, adhering to the < 300 line project standard while improving maintenance.
+- **Stop/New Multi-Purpose Button**: Enhanced the chat input area by replacing the disabled "Stop" button with a "New" button during idle phases. Clicking "New" clears the current conversation, while the button dynamically switches to "Stop" during active generation to allow immediate termination.

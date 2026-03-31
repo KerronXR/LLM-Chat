@@ -72,7 +72,7 @@
 
             <div class="setting-group">
                 <label for="system-prompt">System Prompt / Persona</label>
-                <textarea id="system-prompt" rows="6" placeholder="Define how the AI should behave..."></textarea>
+                <textarea id="system-prompt" rows="6" placeholder="Define how the AI should behave...">You are Gemma, a helpful AI assistant.</textarea>
                 <button id="save-persona-btn" class="secondary-btn" style="margin-top: 10px; width: 100%;">Save
                     Persona</button>
             </div>
@@ -99,14 +99,14 @@
 
             <div class="chat-input-area">
                 <input type="text" id="user-input" placeholder="Type your message here..." autocomplete="off">
-                <button id="stop-btn" disabled>Stop</button>
+                <button id="stop-btn">New</button>
                 <button id="send-btn">Send</button>
             </div>
 
             <div class="status-bar">
-                <span>Server: http://localhost:8000</span>
-                <span>Context: <span id="current-context">0</span> / Max: <span id="max-context">0</span> tokens</span>
-                <span>Ollama: http://localhost:11434</span>
+                <span id="status-server">Server: http://localhost:8000</span>
+                <span id="status-context">Context: <span id="current-context">0</span> / Max: <span id="max-context">0</span> tokens</span>
+                <span id="status-ollama">Ollama: http://localhost:11434</span>
             </div>
         </main>
     </div>

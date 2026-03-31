@@ -1,6 +1,9 @@
 import { state, DOM } from './state.js';
 import { fetchWithAbort, generateImage } from './api.js';
 import { setGenerating, appendMessage, showProgress } from './ui.js';
+import { updateContextUI } from './state.js';
+import { saveHistory } from './api.js';
+
 
 export async function handleSend() {
     const text = DOM.userInput.value.trim();
@@ -12,7 +15,7 @@ export async function handleSend() {
     // Add user message
     appendMessage('user', text);
     state.messages.push({ role: 'user', content: text });
-    import('./api.js').then(m => m.saveHistory(state.messages));
+    await saveHistory(state.messages);
     
     setGenerating(true);
     
@@ -69,7 +72,7 @@ async function handleLlmGeneration() {
                     document.getElementById('max-context').textContent = state.maxContext;
                     
                     // Save history after AI response
-                    import('./api.js').then(m => m.saveHistory(state.messages));
+                    await saveHistory(state.messages);
                 }
                 } catch (e) { console.error('Parse error:', e); }
             }
@@ -98,7 +101,7 @@ async function handleImageGeneration(prompt) {
         if (data && data.url) {
             appendMessage('ai', data.url, true);
             state.messages.push({ role: 'assistant', content: `Image generated: ${data.url}` });
-            import('./api.js').then(m => m.saveHistory(state.messages));
+            await saveHistory(state.messages);
         } else if (data && data.error) {
             appendMessage('ai', data.error, false, true);
         }
@@ -106,5 +109,25 @@ async function handleImageGeneration(prompt) {
         appendMessage('ai', 'Image generation error: ' + err.message, false, true);
     } finally {
         setGenerating(false);
+    }
+}
+
+export async function handleClearChat() {
+    DOM.chatWindow.innerHTML = '';
+    state.messages = [];
+    state.contextSize = 0;
+    updateContextUI();
+    appendMessage('ai', 'Chat cleared.');
+    await saveHistory(state.messages);
+}
+
+export function handleStopOrNew() {
+    if (state.isGenerating) {
+        if (state.abortController) {
+            state.abortController.abort();
+        }
+        setGenerating(false);
+    } else {
+        handleClearChat();
     }
 }

@@ -114,11 +114,25 @@
     }
 
     .status-bar {
-        padding: 10px;
+        padding: 15px 10px 25px 10px; /* Extra bottom padding for mobile browser UI */
         flex-direction: column;
-        gap: 5px;
+        gap: 0;
         align-items: center;
-        font-size: 0.7rem;
+        font-size: 0.9rem;
+        background: rgba(0, 0, 0, 0.4); /* Darker background for better contrast */
+        border-top: 1px solid var(--glass-border);
+    }
+
+    #status-server,
+    #status-ollama {
+        display: none !important; /* Hide URLs on mobile */
+    }
+
+    #status-context {
+        display: block !important;
+        font-weight: 600;
+        font-size: 1.1rem; /* Prominent context window size */
+        letter-spacing: 0.5px;
     }
 }
 

@@ -1,6 +1,6 @@
 import { state, DOM } from './state.js';
 import { fetchWithAbort, generateImage } from './api.js';
-import { setGenerating, appendMessage, showProgress } from './ui.js';
+import { setGenerating, appendMessage, showProgress, updateImageMessage } from './ui.js';
 import { updateContextUI } from './state.js';
 import { saveHistory } from './api.js';
 
@@ -90,32 +90,92 @@ async function handleLlmGeneration() {
 
 async function handleImageGeneration(prompt) {
     state.abortController = new AbortController();
+    let aiMsgDiv = null;
+    let urls = [];
+    
     try {
         const resolution = DOM.imageSizeSelect.value.split('x');
         const width = parseInt(resolution[0]);
         const height = parseInt(resolution[1]);
         const batch_size = parseInt(DOM.batchSizeSlider.value);
-        const init_image = DOM.imagePreview.src.startsWith('data:') ? DOM.imagePreview.src : null;
+        const init_image = DOM.imagePreviewContainer.style.display !== 'none' ? DOM.imagePreview.src : null;
         
-        const data = await generateImage(prompt, { width, height, batch_size, init_image });
+        const response = await generateImage(prompt, { width, height, batch_size, init_image });
+        if (!response) return;
         
-        if (data && data.url) {
-            appendMessage('ai', data.url, true);
-            state.messages.push({ role: 'assistant', content: `Image generated: ${data.url}` });
-            await saveHistory(state.messages);
-        } else if (data && data.error) {
-            appendMessage('ai', data.error, false, true);
-        } else {
-            throw new Error('No response from image generator');
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`Server returned error (${response.status}): ${errorBody}`);
+        }
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            
+            // Handle both \r\n and \n line endings for robustness
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop(); // Keep the last partial line
+            
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const json = JSON.parse(line);
+                    if (json.url) {
+                        urls.push(json.url);
+                        if (!aiMsgDiv) {
+                            aiMsgDiv = appendMessage('ai', urls, true);
+                        } else {
+                            updateImageMessage(aiMsgDiv, urls);
+                        }
+                    }
+                    if (json.done) {
+                        state.messages.push({ role: 'assistant', content: `Images generated: ${urls.join(', ')}` });
+                        await saveHistory(state.messages);
+                    }
+                    if (json.error) throw new Error(json.error);
+                } catch (e) {
+                    console.error('JSON Parse error in stream:', e, line);
+                }
+            }
         }
     } catch (err) {
         if (err.name === 'AbortError') {
             appendMessage('ai', '[Generation Stopped]', false, true);
         } else {
+            console.error('Image generation error:', err);
             appendMessage('ai', 'Image generation error: ' + err.message, false, true);
         }
     } finally {
         setGenerating(false);
+    }
+}
+
+export async function handleUpscale(path, btn) {
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳ Processing...</span>';
+    
+    try {
+        const { upscaleImage } = await import('./api.js');
+        const data = await upscaleImage(path);
+        if (data && data.url) {
+            appendMessage('ai', data.url, true);
+            state.messages.push({ role: 'assistant', content: `Image upscaled: ${data.url}` });
+            await saveHistory(state.messages);
+        } else {
+            throw new Error(data?.error || 'Upscale failed');
+        }
+    } catch (err) {
+        appendMessage('ai', 'Upscale error: ' + err.message, false, true);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
     }
 }
 

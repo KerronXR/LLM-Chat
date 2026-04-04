@@ -28,8 +28,14 @@ getHistory().then(history => {
         state.messages = history;
         DOM.chatWindow.innerHTML = '';
         state.messages.forEach(msg => {
-            const isImage = msg.content.startsWith('Image generated:');
-            const content = isImage ? msg.content.replace('Image generated: ', '') : msg.content;
+            const isBatch = msg.content.startsWith('Images generated:');
+            const isSingle = msg.content.startsWith('Image generated:');
+            const isImage = isBatch || isSingle;
+            
+            let content = msg.content;
+            if (isBatch) content = msg.content.replace('Images generated: ', '').split(', ');
+            else if (isSingle) content = msg.content.replace('Image generated: ', '');
+            
             appendMessage(msg.role === 'user' ? 'user' : 'ai', content, isImage);
         });
     }
@@ -100,3 +106,10 @@ DOM.batchSizeSlider.oninput = (e) => {
 
 // Initial UI state
 updateContextUI();
+
+// Register upscale request listener
+window.addEventListener('upscale-request', async (e) => {
+    const { path, btn } = e.detail;
+    const { handleUpscale } = await import('./handlers.js');
+    handleUpscale(path, btn);
+});

@@ -12,13 +12,42 @@ export function scrollToBottom() {
     });
 }
 
+export function updateImageMessage(msgDiv, urls) {
+    let html = '<div class="image-grid">';
+    urls.forEach(url => {
+        html += `
+            <div class="image-container">
+                <img src="${url}" alt="Generated Image">
+                <button class="upscale-btn" data-url="${url}">
+                    <span>✨ Upscale</span>
+                </button>
+            </div>`;
+    });
+    html += '</div>';
+    msgDiv.innerHTML = html;
+
+    // Add event listeners for images and upscale buttons
+    msgDiv.querySelectorAll('.image-container img').forEach(img => {
+        img.onclick = () => window.open(img.src, '_blank');
+    });
+    
+    msgDiv.querySelectorAll('.upscale-btn').forEach(btn => {
+        btn.onclick = (e) => {
+            e.stopPropagation();
+            const path = btn.getAttribute('data-url');
+            const event = new CustomEvent('upscale-request', { detail: { path, btn } });
+            window.dispatchEvent(event);
+        };
+    });
+}
+
 export function appendMessage(role, content, isImage = false, isError = false) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${role}-message ${isImage ? 'image-msg' : ''} ${isError ? 'error-msg' : ''}`;
     
     if (isImage) {
-        msgDiv.innerHTML = `<img src="${content}" alt="Generated Image" style="width: 100%; border-radius: 12px; border: 1px solid var(--glass-border); margin-top: 10px; cursor: pointer;">`;
-        msgDiv.onclick = () => window.open(content, '_blank');
+        const urls = Array.isArray(content) ? content : [content];
+        updateImageMessage(msgDiv, urls);
     } else {
         // Simple Markdown-ish escaping for now, but handle code blocks similarly to before
         msgDiv.textContent = content;

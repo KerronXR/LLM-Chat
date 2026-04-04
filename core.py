@@ -52,14 +52,70 @@ def load_local_model(model_id):
     current_model_path = model_path
     return llm_instance
 
+def is_port_in_use(p):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', p)) == 0
+
+def force_cleanup_port(port):
+    """Forcefully kill any process using the specified port on Windows."""
+    if not is_port_in_use(port):
+        return
+    logger.info(f"Cleaning up ghost process on port {port}...")
+    if os.name == 'nt':
+        try:
+            # Find PID on this port
+            cmd = f'netstat -ano | findstr :{port}'
+            out = subprocess.check_output(cmd, shell=True).decode()
+            for line in out.splitlines():
+                if f":{port}" in line and "LISTENING" in line:
+                    pid = line.strip().split()[-1]
+                    if pid != '0':
+                        logger.info(f"Force killing PID {pid} tree...")
+                        subprocess.run(['taskkill', '/F', '/T', '/PID', pid], capture_output=True)
+            time.sleep(1)
+        except Exception as e:
+            logger.error(f"Failed to force cleanup port {port}: {e}")
+
+fastsd_process = None
+
 def start_fastsd(fastsd_dir, port):
-    def is_port_in_use(p):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            return s.connect_ex(('127.0.0.1', p)) == 0
+    global fastsd_process
     if not is_port_in_use(port):
         logger.info(f"Starting FastSD CPU on {port}...")
         python_exe = os.path.join(fastsd_dir, "env", "Scripts", "python.exe")
         env = os.environ.copy()
         env["PATH"] = env.get("PATH", "") + ";" + os.path.join(fastsd_dir, "env", "Lib", "site-packages", "openvino", "libs")
-        subprocess.Popen([python_exe, os.path.join(fastsd_dir, "src", "app.py"), "--api", "--port", str(port)], cwd=fastsd_dir, env=env, creationflags=subprocess.CREATE_NO_WINDOW)
+        fastsd_process = subprocess.Popen([python_exe, os.path.join(fastsd_dir, "src", "app.py"), "--api", "--port", str(port)], cwd=fastsd_dir, env=env, creationflags=subprocess.CREATE_NO_WINDOW)
         time.sleep(5)
+    return fastsd_process
+
+def cleanup_llm():
+    """Explicitly release LLM instance and collect garbage to free memory."""
+    global llm_instance
+    if llm_instance is not None:
+        logger.info("Cleaning up LLM instance memory...")
+        # Llama class handles its own C++ destruction in __del__
+        # but we help by deleting the Python reference and collecting
+        del llm_instance
+        llm_instance = None
+        gc.collect()
+        logger.info("Memory collection triggered.")
+
+def stop_fastsd():
+    global fastsd_process
+    if fastsd_process:
+        logger.info("Stopping FastSD CPU...")
+        try:
+            # Try gentle first
+            fastsd_process.terminate()
+            fastsd_process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            logger.warning("Standard termination timed out. Force killing tree...")
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/F', '/T', '/PID', str(fastsd_process.pid)], capture_output=True)
+            else:
+                fastsd_process.kill()
+        except Exception as e:
+            logger.error(f"Error stopping FastSD process: {e}")
+        finally:
+            fastsd_process = None

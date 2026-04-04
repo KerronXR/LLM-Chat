@@ -112,9 +112,20 @@ taskkill /F /PID <PID>
 - **Robust Image Generation**: Increased the backend timeout for FastSD CPU requests to 10 minutes and individual image upscales to 5 minutes. Added `Content-Length` headers and improved protocol compliance to resolve "Failed to fetch" errors during long-running CPU generation tasks.
 - **Conversation Export**: Added a "Export Conversation" button to the sidebar. It allows users to quickly download their current chat history as a formatted, human-readable `.txt` file.
 
+- **Batch Image Generation (Streaming)**: When generating image batches, images now appear in the chat **one-by-one as they finish**. This prevents connection timeouts (like the 524 error) during long CPU inference tasks and provides a much more dynamic user experience.
+- **Increased Timeouts & Keepalive**: Frontend requests use `keepalive` and the backend uses chunked NDJSON streaming to ensure background processing completes reliably even through proxies.
+- **One-Click Upscaling**: Every image in the batch features a dedicated "✨ Upscale" button for immediate resolution enhancement.
+
+- **Graceful & Forced Cleanup**: Properly managing background processes is critical for resource cleanup. The system now uses `atexit` registration and signal handlers (SIGINT, SIGTERM, SIGBREAK) for standard exits. 
+- **LLM Memory Release (RAM Management)**: To solve the "orphaned process" issue (where RAM remains stuck after closing), the server explicitly releases the LLM instance and triggers garbage collection on shutdown. It performs a **Forced Port Cleanup** on startup to clear any existing ghost processes.
+- **Improved Process Lifecycle**: `start_fastsd` returns the process handle and includes a robust `stop_fastsd` helper that uses Windows `taskkill /F /T` for reliable termination of the entire process tree.
+- **Enhanced Stream Robustness**: Resolved "Server returned non-JSON response" errors during large batch image generation (6+ images). Updated the frontend to robustly handle NDJSON streams with mixed line endings (`\r\n` and `\n`) and added an explicit `response.ok` pre-check for more descriptive server-side error reporting.
+
 ### Test Files
 - `tests/test_server.py` — Server-side unit tests (endpoints, logging, process helpers)
 - `tests/test_ui.py` — Playwright UI tests (chat flow, context, persona, image gen)
+- `tests/test_process_lifecycle.py` — Verifies that background services are manageable and correctly tracked.
+- `tests/test_slider_limits.py` — Playwright tests for batch size slider limits and UI updates.
 - `tests/test_export.py` — Playwright tests for the export conversation feature
 - `tests/test_images.py` — Playwright image UI element tests
 - `tests/test_image_chat.py` — Playwright tests for chat-driven image generation (keyword detection, Use My Image, error handling, sidebar cleanup)

@@ -66,25 +66,29 @@ export async function savePersona(content) {
 }
 
 export async function generateImage(prompt, options = {}) {
-    try {
-        const response = await fetch('/generate_image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt,
-                width: options.width || 512,
-                height: options.height || 512,
-                batch_size: options.batch_size || 1,
-                init_image: options.init_image || null
-            }),
-            signal: state.abortController?.signal
-        });
-        if (response.status === 401) { window.location.href = '/login.html'; return null; }
-        return await response.json();
-    } catch (err) {
-        if (err.name === 'AbortError') return null;
-        throw err;
+    // Generate image request for batch generation (streaming)
+    const response = await fetch('/generate_image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            prompt,
+            width: options.width || 512,
+            height: options.height || 512,
+            batch_size: options.batch_size || 1,
+            init_image: options.init_image || null
+        }),
+        signal: state.abortController?.signal,
+        keepalive: true
+    });
+    
+    if (response.status === 401) { 
+        window.location.href = '/login.html'; 
+        return null; 
     }
+    
+    // We MUST return the raw response object so that calling code can
+    // use response.body.getReader() for streaming.
+    return response;
 }
 
 export async function upscaleImage(imagePath) {
@@ -94,10 +98,19 @@ export async function upscaleImage(imagePath) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ image_path: imagePath })
         });
+        
         if (response.status === 401) { window.location.href = '/login.html'; return null; }
-        return await response.json();
+
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+            return await response.json();
+        } else {
+            const text = await response.text();
+            console.error('Non-JSON response from server during upscale:', text);
+            throw new Error(`Server returned non-JSON response (${response.status}): ${text.substring(0, 200)}${text.length > 200 ? '...' : ''}`);
+        }
     } catch (err) {
         console.error('Upscale failed:', err);
-        return null;
+        return { error: err.message };
     }
 }

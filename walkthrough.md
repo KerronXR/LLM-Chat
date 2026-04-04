@@ -4,6 +4,7 @@
 This project provides a fully localized AI environment using `llama-cpp-python` for LLMs and a premium Python web UI for interaction. It features specialized "Uncensored Mode" for models like Dolphin Llama 3, chat-driven image generation via FastSD CPU, and persistent persona saving. Everything is contained within the project directory.
 
 - **Supported Local LLM Models (`.gguf`)**:
+    * Gemma-4 E4B (Latest 2026) - [NEW]
     * Dolphin Llama 3 (Uncensored)
     * Gemma-3 12B (Heretic)
 
@@ -101,9 +102,11 @@ taskkill /F /PID <PID>
 2. The UI will automatically switch to the uncensored persona.
 3. Restart the server if you want to force a clean reload of the model.
 
+### Failed to load Gemma 4 model?
+- Ensure llama-cpp-python is updated to version 0.3.20 or newer (required for gemma4 architecture).
+- Run `.venv\Scripts\python.exe setup_local_llm.py` to ensure the `gemma-4-E4B-it-Q8_0.gguf` model is downloaded.
+
 ### Failed to load Gemma 3 model?
-- Ensure `llama-cpp-python` is updated to version 0.3.15 or newer. This is required for the new Gemma 3 architecture support.
-- Run `.venv\Scripts\python.exe setup_local_llm.py` to ensure the correct package versions are installed after any major model updates.
 
 - **Mobile UI Fixes**: Streamlined the status bar on mobile to hide redundant URLs (Server/Ollama) and emphasize the **Context Tracker**, ensuring it is visible even on small screens with bottom toolbars.
 - **Improved Context Tracking**: Resolved a bug where token counts were hardcoded to 0. The server now accurately calculates prompt and completion tokens using `llm.tokenize()`, providing real-time accuracy in the UI.

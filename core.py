@@ -26,8 +26,8 @@ logger = logging.getLogger(__name__)
 
 MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 MODELS_MAPPING = {
-    "dolphin-llama3:latest": "dolphin-2.9-llama3-8b-q4_K_M.gguf",
-    "gemma-3-12b-it:latest": "gemma-3-12b-it-heretic.Q4_K_M.gguf"
+    "gemma-3-12b-it:latest": "gemma-3-12b-it-heretic.Q4_K_M.gguf",
+    "google-gemma-4-e4b-it:latest": "google_gemma-4-E4B-it-Q8_0.gguf"
 }
 
 llm_instance = None

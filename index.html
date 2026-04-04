@@ -23,7 +23,7 @@
                 <label for="model-select">Active Model</label>
                 <select id="model-select">
                     <option value="gemma-3-12b-it:latest" selected>Gemma-3 12B (Heretic)</option>
-                    <option value="dolphin-llama3:latest">Dolphin Llama 3 (Uncensored)</option>
+                    <option value="google-gemma-4-e4b-it:latest">Gemma-4 E4B (Latest 2026)</option>
                 </select>
             </div>
 
@@ -93,11 +93,16 @@
             <div id="chat-window">
                 <div class="message ai-message">
                     Welcome back. I am currently running <strong>Gemma-3 12B (Heretic)</strong> by default.
-                    Dolphin Llama 3 is also available in the sidebar for uncensored tasks. How can I assist you today?
+                    Gemma-4 is also available in the sidebar. How can I assist you today?
                 </div>
             </div>
 
             <div class="chat-input-area">
+                <input type="file" id="chat-attachment" accept="image/*,text/*,.pdf,.md" style="display: none;">
+                <button id="attach-btn" class="attach-btn" title="Attach file (Images, PDF, Text, MD)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                </button>
+                <div id="attachment-preview" class="attachment-preview-hidden"></div>
                 <input type="text" id="user-input" placeholder="Type your message here..." autocomplete="off">
                 <button id="stop-btn">New</button>
                 <button id="send-btn">Send</button>

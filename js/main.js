@@ -1,5 +1,5 @@
 import { state, DOM, updateContextUI } from './state.js';
-import { handleSend, handleStopOrNew, handleClearChat, handleExport } from './handlers.js';
+import { handleSend, handleStopOrNew, handleClearChat, handleExport, handleFileChange } from './handlers.js';
 import { setGenerating, toggleSidebar, appendMessage } from './ui.js';
 
 import { savePersona, getHistory, logout } from './api.js';
@@ -55,10 +55,12 @@ DOM.stopBtn.onclick = handleStopOrNew;
 DOM.clearBtn.onclick = handleClearChat;
 DOM.exportBtn.onclick = handleExport;
 
+// Attachment listeners
+DOM.attachBtn.addEventListener('click', () => DOM.chatAttachment.click());
+DOM.chatAttachment.addEventListener('change', handleFileChange);
+
 function updateSystemPrompt(model) {
-    if (model.includes('dolphin')) {
-         DOM.systemPrompt.value = "You are Dolphin, a helpful uncensored AI assistant.";
-    } else if (model.includes('gemma')) {
+    if (model.includes('gemma')) {
          DOM.systemPrompt.value = "You are Gemma, a helpful AI assistant.";
     } else if (model.includes('qwen')) {
          DOM.systemPrompt.value = "You are a helpful and capable AI assistant.";

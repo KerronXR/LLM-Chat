@@ -10,13 +10,13 @@ MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 
 # We map the UI model identifiers to HuggingFace repo and filename.
 MODELS_TO_DOWNLOAD = {
-    "dolphin-llama3:latest": {
-        "repo": "cognitivecomputations/dolphin-2.9-llama3-8b-gguf",
-        "filename": "dolphin-2.9-llama3-8b-q4_K_M.gguf"
-    },
     "gemma-3-12b-it:latest": {
         "repo": "mradermacher/gemma-3-12b-it-heretic-GGUF",
         "filename": "gemma-3-12b-it-heretic.Q4_K_M.gguf"
+    },
+    "google-gemma-4-e4b-it:latest": {
+        "repo": "bartowski/google_gemma-4-E4B-it-GGUF",
+        "filename": "google_gemma-4-E4B-it-Q8_0.gguf"
     }
 }
 
@@ -28,10 +28,10 @@ def install_dependencies():
         subprocess.check_call(["uv", "pip", "install", "huggingface_hub", "pytest", "pytest-base-url", "pytest-playwright"])
         
         # Install llama-cpp-python using the pre-built CPU wheels for windows
-        # Version 0.3.15+ is required for robust Gemma 3 support.
+        # Version 0.3.15+ is required for robust Gemma 3 and Gemma 4 support.
         subprocess.check_call([
             "uv", "pip", "install", "-U",
-            "llama-cpp-python>=0.3.15", 
+            "llama-cpp-python>=0.3.20", 
             "--extra-index-url", "https://abetlen.github.io/llama-cpp-python/whl/cpu"
         ])
     except Exception as e:

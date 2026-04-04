@@ -28,8 +28,8 @@ def test_error_log_dir_created():
 
 def test_error_log_filename_format():
     """get_error_log_filename() must embed today's YYYY-MM-DD in the filename."""
-    import run_ui
-    filename = run_ui.get_error_log_filename()
+    from core import get_error_log_filename
+    filename = get_error_log_filename()
     basename = os.path.basename(filename)
     today = datetime.now().strftime("%Y-%m-%d")
     assert basename == f"error_{today}.log", (

@@ -33,13 +33,13 @@ def test_model_selection_updates_prompt(page: Page):
     model_select = page.locator("#model-select")
     system_prompt = page.locator("#system-prompt")
     
-    # Switch to Qwen
-    model_select.select_option("qwen3.5:latest")
-    expect(system_prompt).to_have_value(re.compile(".*helpful and capable AI assistant.*"))
+    # Switch to Gemma-3
+    model_select.select_option("gemma-3-12b-it:latest")
+    expect(system_prompt).to_have_value(re.compile(".*You are Gemma.*"))
     
-    # Switch back to Dolphin
-    model_select.select_option("dolphin-llama3:latest")
-    expect(system_prompt).to_have_value(re.compile(".*You are Dolphin.*"))
+    # Switch to Gemma-4
+    model_select.select_option("google-gemma-4-e4b-it:latest")
+    expect(system_prompt).to_have_value(re.compile(".*You are Gemma.*"))
 
 def test_clear_chat(page: Page):
     page.goto(INDEX_HTML)

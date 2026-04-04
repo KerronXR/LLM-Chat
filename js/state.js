@@ -8,7 +8,8 @@ export const state = {
     abortController: null,
     contextSize: 0,
     maxContext: 8192,
-    activeModel: "gemma-3-12b-it:latest"
+    activeModel: "gemma-3-12b-it:latest",
+    attachedFile: null
 };
 
 export const DOM = {
@@ -33,12 +34,15 @@ export const DOM = {
     imageSizeSelect: document.getElementById('image-size-select'),
     batchSizeSlider: document.getElementById('batch-size-slider'),
     batchSizeValue: document.getElementById('batch-size-value'),
+    chatAttachment: document.getElementById('chat-attachment'),
+    attachBtn: document.getElementById('attach-btn'),
+    attachmentPreview: document.getElementById('attachment-preview'),
     mobileToggle: null, // Initialized in main
     sidebarBackdrop: null,
     sidebar: document.querySelector('.sidebar')
 };
 
 export function updateContextUI() {
-    DOM.currentContext.textContent = state.contextSize;
-    DOM.maxContext.textContent = state.maxContext;
+    if (DOM.currentContext) DOM.currentContext.textContent = state.contextSize;
+    if (DOM.maxContext) DOM.maxContext.textContent = state.maxContext;
 }

@@ -22,12 +22,68 @@ export async function handleSend() {
     if (DOM.autoImageCheckbox.checked) {
         await handleImageGeneration(text);
     } else {
-        await handleLlmGeneration(text);
+        await handleLlmGeneration(text, state.attachedFile);
     }
 }
 
-async function handleLlmGeneration() {
+export async function handleAttachmentSelect() {
+    DOM.chatAttachment.click();
+}
+
+export async function handleFileChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    state.attachedFile = file;
+    DOM.attachmentPreview.innerHTML = '';
+    DOM.attachmentPreview.classList.remove('attachment-preview-hidden');
+
+    if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = document.createElement('img');
+            img.src = e.target.result;
+            DOM.attachmentPreview.appendChild(img);
+            addRemoveButton();
+        };
+        reader.readAsDataURL(file);
+    } else {
+        const chip = document.createElement('div');
+        chip.className = 'file-chip';
+        chip.innerHTML = `<span>📄 ${file.name}</span>`;
+        DOM.attachmentPreview.appendChild(chip);
+        addRemoveButton();
+    }
+}
+
+function addRemoveButton() {
+    const removeBtn = document.createElement('span');
+    removeBtn.innerHTML = '×';
+    removeBtn.style.cursor = 'pointer';
+    removeBtn.style.marginLeft = '10px';
+    removeBtn.style.fontSize = '1.2rem';
+    removeBtn.onclick = clearAttachment;
+    DOM.attachmentPreview.appendChild(removeBtn);
+}
+
+function clearAttachment() {
+    state.attachedFile = null;
+    DOM.chatAttachment.value = '';
+    DOM.attachmentPreview.classList.add('attachment-preview-hidden');
+    DOM.attachmentPreview.innerHTML = '';
+}
+
+async function handleLlmGeneration(text, file = null) {
     state.abortController = new AbortController();
+    
+    let fileData = null;
+    if (file) {
+        if (file.type.startsWith('image/')) {
+            fileData = { type: 'image', data: await fileToB64(file) };
+        } else {
+            fileData = { type: 'file', name: file.name, content: await fileToText(file) };
+        }
+    }
     
     try {
         const response = await fetch('/api/chat', {
@@ -36,13 +92,16 @@ async function handleLlmGeneration() {
             body: JSON.stringify({
                 model: DOM.modelSelect.value,
                 messages: state.messages,
-                stream: true
+                stream: true,
+                attachment: fileData
             }),
             signal: state.abortController.signal
         });
         
         if (response.status === 401) { window.location.href = '/login.html'; return; }
-        if (!response.ok) throw new Error('Ollama connection failed');
+        if (!response.ok) throw new Error('Generation failed');
+        
+        clearAttachment(); // Clear preview on successful send
         
         const aiMsgDiv = appendMessage('ai', '...');
         let aiContent = '';
@@ -223,4 +282,21 @@ export function handleExport() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+}
+async function fileToB64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+async function fileToText(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsText(file);
+    });
 }

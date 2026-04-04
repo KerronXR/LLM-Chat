@@ -128,6 +128,68 @@ select:focus, textarea:focus {
     gap: 15px;
     align-items: center;
     border-top: 1px solid var(--glass-border);
+    position: relative;
+}
+
+.attach-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.attach-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--accent-primary);
+    border-color: var(--accent-primary);
+}
+
+#attachment-preview {
+    position: absolute;
+    bottom: 100%;
+    left: 40px;
+    padding: 10px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+    border-bottom: none;
+    border-radius: 12px 12px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: var(--transition);
+}
+
+.attachment-preview-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(10px);
+}
+
+#attachment-preview img {
+    height: 40px;
+    border-radius: 4px;
+}
+
+.file-chip {
+    background: rgba(255,255,255,0.1);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.file-chip .remove {
+    cursor: pointer;
+    color: #ff4b2b;
 }
 
 input[type="text"] {

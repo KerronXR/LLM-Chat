@@ -74,7 +74,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         def chunk(obj):
             ds = json.dumps(obj) + "\n"; b = ds.encode()
             self.wfile.write(f"{len(b):X}\r\n".encode() + b + b"\r\n"); self.wfile.flush()
-        msg = data.get('messages', []); ec, pc = 0, len(llm.tokenize(json.dumps(msg).encode()))
+        msg = data.get('messages', [])
+        attachment = data.get('attachment')
+        if attachment:
+            if attachment['type'] == 'file':
+                # Append context for text/doc files
+                ctx_msg = f"\n\n[Attached File: {attachment['name']}]\n{attachment['content']}"
+                if msg: msg[-1]['content'] += ctx_msg
+            elif attachment['type'] == 'image':
+                # If vision capability exists, we'd add it to 'content' list. 
+                # For Gemma-4-it (text-only instructions), we prepend a notice.
+                # In future we can add multimodal support here.
+                if msg: msg[-1]['content'] = "[Image Attached - " + msg[-1]['content'] + "]"
+        
+        ec, pc = 0, len(llm.tokenize(json.dumps(msg).encode()))
         try:
             for out in llm.create_chat_completion(messages=msg, stream=True, max_tokens=4096):
                 delta = out["choices"][0]["delta"]

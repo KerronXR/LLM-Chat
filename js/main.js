@@ -2,7 +2,7 @@ import { state, DOM, updateContextUI } from './state.js';
 import { handleSend, handleStopOrNew, handleClearChat, handleExport, handleFileChange } from './handlers.js';
 import { setGenerating, toggleSidebar, appendMessage } from './ui.js';
 
-import { savePersona, getHistory, logout } from './api.js';
+import { savePersona, getHistory, getPersona, logout } from './api.js';
 
 // Init
 // Add mobile toggle elements to DOM
@@ -28,16 +28,23 @@ getHistory().then(history => {
         state.messages = history;
         DOM.chatWindow.innerHTML = '';
         state.messages.forEach(msg => {
-            const isBatch = msg.content.startsWith('Images generated:');
-            const isSingle = msg.content.startsWith('Image generated:');
+            const contentText = typeof msg.content === 'string' ? msg.content : '';
+            const isBatch = contentText.startsWith('Images generated:');
+            const isSingle = contentText.startsWith('Image generated:');
             const isImage = isBatch || isSingle;
             
-            let content = msg.content;
-            if (isBatch) content = msg.content.replace('Images generated: ', '').split(', ');
-            else if (isSingle) content = msg.content.replace('Image generated: ', '');
+            let content = msg;
+            if (isBatch) content = contentText.replace('Images generated: ', '').split(', ');
+            else if (isSingle) content = contentText.replace('Image generated: ', '');
             
             appendMessage(msg.role === 'user' ? 'user' : 'ai', content, isImage);
         });
+    }
+});
+
+getPersona().then(persona => {
+    if (persona) {
+        DOM.systemPrompt.value = persona;
     }
 });
 

@@ -6,12 +6,15 @@ import re
 import base64
 
 BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX_HTML = f"file:///{BASE_PATH.replace(os.sep, '/')}/index.html"
+INDEX_HTML = os.getenv("PLAYWRIGHT_APP_URL", f"file:///{BASE_PATH.replace(os.sep, '/')}/index.html")
 
 def _block_persona(page: Page):
     """Block persona.txt so loadSavedPersona doesn't interfere."""
-    page.route("http://localhost:8000/persona.txt",
+    page.route("**/persona.txt",
                lambda route: route.fulfill(status=404))
+
+def ndjson_response(*chunks):
+    return "".join(json.dumps(chunk) + "\n" for chunk in chunks).encode()
 
 def test_image_parameters_sent_to_backend(page: Page):
     """Verifies that width, height, and batch size are sent to the backend."""
@@ -20,12 +23,16 @@ def test_image_parameters_sent_to_backend(page: Page):
     def handle_generate(route):
         captured_requests.append(route.request.post_data_json)
         route.fulfill(
-            status=200, 
-            content_type="application/json",
-            body=json.dumps({"urls": ["/images/gen1.png", "/images/gen2.png"]})
+            status=200,
+            content_type="application/x-ndjson",
+            body=ndjson_response(
+                {"url": "/images/gen1.png"},
+                {"url": "/images/gen2.png"},
+                {"done": True, "urls": ["/images/gen1.png", "/images/gen2.png"]}
+            )
         )
 
-    page.route("http://localhost:8000/generate_image", handle_generate)
+    page.route("**/generate_image", handle_generate)
     _block_persona(page)
     page.goto(INDEX_HTML)
 

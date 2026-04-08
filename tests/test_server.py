@@ -85,15 +85,16 @@ def test_images_dir_created():
 def _start_test_server(directory, port):
     """Start a Handler server in a daemon thread. Returns (server, original_dir)."""
     import run_ui
+    import http.server
     import socketserver
 
     original_dir = run_ui.DIRECTORY
     run_ui.DIRECTORY = directory
-    socketserver.TCPServer.allow_reuse_address = True
-    server = socketserver.TCPServer(("", port), run_ui.Handler)
+    run_ui.sessions.clear()
+    server = http.server.HTTPServer(("127.0.0.1", port), run_ui.Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    time.sleep(0.2)
+    time.sleep(0.5)
     return server, original_dir
 
 
@@ -103,15 +104,24 @@ def _stop_test_server(server, original_dir):
     run_ui.DIRECTORY = original_dir
 
 
+def _auth_headers():
+    import run_ui
+
+    token = "test-session-token"
+    run_ui.sessions[token] = int(time.time())
+    return {"Cookie": f"session_token={token}"}
+
+
 def test_save_persona_endpoint_writes_file():
     """POST /save_persona must write the body to persona.txt in DIRECTORY."""
     tmp = tempfile.mkdtemp()
     server, orig = _start_test_server(tmp, port=18765)
     try:
         body = b"You are a test assistant."
-        conn = http.client.HTTPConnection("localhost", 18765)
+        conn = http.client.HTTPConnection("127.0.0.1", 18765)
+        headers = {"Content-Length": str(len(body)), **_auth_headers()}
         conn.request("POST", "/save_persona", body,
-                     {"Content-Length": str(len(body))})
+                     headers)
         resp = conn.getresponse()
         assert resp.status == 200, f"Expected 200, got {resp.status}"
 
@@ -133,8 +143,8 @@ def test_persona_txt_endpoint_returns_content():
 
     server, orig = _start_test_server(tmp, port=18766)
     try:
-        conn = http.client.HTTPConnection("localhost", 18766)
-        conn.request("GET", "/persona.txt")
+        conn = http.client.HTTPConnection("127.0.0.1", 18766)
+        conn.request("GET", "/persona.txt", headers=_auth_headers())
         resp = conn.getresponse()
         assert resp.status == 200
         assert resp.read().decode("utf-8") == persona_content
@@ -148,8 +158,8 @@ def test_persona_txt_endpoint_404_when_missing():
     tmp = tempfile.mkdtemp()
     server, orig = _start_test_server(tmp, port=18767)
     try:
-        conn = http.client.HTTPConnection("localhost", 18767)
-        conn.request("GET", "/persona.txt")
+        conn = http.client.HTTPConnection("127.0.0.1", 18767)
+        conn.request("GET", "/persona.txt", headers=_auth_headers())
         resp = conn.getresponse()
         assert resp.status == 404
     finally:
@@ -162,8 +172,9 @@ def test_unknown_post_returns_404():
     tmp = tempfile.mkdtemp()
     server, orig = _start_test_server(tmp, port=18769)
     try:
-        conn = http.client.HTTPConnection("localhost", 18769)
-        conn.request("POST", "/nonexistent_endpoint", b"", {"Content-Length": "0"})
+        conn = http.client.HTTPConnection("127.0.0.1", 18769)
+        headers = {"Content-Length": "0", **_auth_headers()}
+        conn.request("POST", "/nonexistent_endpoint", b"", headers)
         resp = conn.getresponse()
         assert resp.status == 404
     finally:

@@ -3,14 +3,10 @@ from playwright.sync_api import Page, expect
 import os
 
 # Get the absolute path to the index.html
-INDEX_HTML = "http://localhost:8000/index.html"
-PASSWORD = "AAaa1111$"
+INDEX_HTML = os.getenv("PLAYWRIGHT_APP_URL", "http://127.0.0.1:8765/index.html")
 
 def login(page: Page):
-    page.goto("http://localhost:8000/login.html")
-    page.locator("#password").fill(PASSWORD)
-    page.locator("#login-btn").click()
-    # Wait for the main app container to appear
+    page.goto(INDEX_HTML)
     page.locator(".app-wrapper").wait_for(state="visible", timeout=10000)
 
 def test_mobile_menu_button_overlap(page: Page):

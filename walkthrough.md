@@ -5,6 +5,7 @@ This project provides a fully localized AI environment using `llama-cpp-python` 
 
 - **Supported Local LLM Models (`.gguf`)**:
     * Gemma-4 E4B (Latest 2026) - [NEW]
+    * Gemma-4 E4B (Heretic Uncensored) - [NEW]
     * Dolphin Llama 3 (Uncensored)
     * Gemma-3 12B (Heretic)
 

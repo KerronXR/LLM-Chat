@@ -1,5 +1,5 @@
 import http.server, socketserver, os, json, base64, time, secrets, urllib.request, logging
-from core import load_local_model, start_fastsd, stop_fastsd, logger, MODELS_MAPPING, MODELS_DIR
+from core import load_local_model, start_fastsd, stop_fastsd, logger, MODELS_MAPPING, MODELS_DIR, model_supports_vision
 import atexit, signal
 
 PORT, FASTSD_PORT = 8000, 8001
@@ -19,6 +19,13 @@ for d in [IMAGES_DIR, MODELS_DIR]:
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
+
     def is_authenticated(self):
         cookie = self.headers.get('Cookie', '')
         if 'session_token=' not in cookie: return False
@@ -76,18 +83,40 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(f"{len(b):X}\r\n".encode() + b + b"\r\n"); self.wfile.flush()
         msg = data.get('messages', [])
         attachment = data.get('attachment')
+        vision_requested = bool(attachment and attachment.get('type') == 'image')
         if attachment:
             if attachment['type'] == 'file':
                 # Append context for text/doc files
                 ctx_msg = f"\n\n[Attached File: {attachment['name']}]\n{attachment['content']}"
                 if msg: msg[-1]['content'] += ctx_msg
             elif attachment['type'] == 'image':
-                # If vision capability exists, we'd add it to 'content' list. 
-                # For Gemma-4-it (text-only instructions), we prepend a notice.
-                # In future we can add multimodal support here.
-                if msg: msg[-1]['content'] = "[Image Attached - " + msg[-1]['content'] + "]"
+                if not model_supports_vision(mid):
+                    chunk({
+                        "model": mid,
+                        "message": {
+                            "role": "assistant",
+                            "content": "This model cannot analyze attached images. Switch to Gemma-4 E4B (Latest 2026) and try again."
+                        },
+                        "done": True,
+                        "prompt_eval_count": 0,
+                        "eval_count": 0,
+                        "context_length": 8192
+                    })
+                    self.wfile.write(b"0\r\n\r\n"); self.wfile.flush()
+                    return
+
+                if msg:
+                    prompt_text = msg[-1].get('content') or "Please describe this image."
+                    mime_type = attachment.get('mimeType') or 'image/png'
+                    data_url = f"data:{mime_type};base64,{attachment['data']}"
+                    logger.info("Vision attachment received: mime=%s bytes=%s", mime_type, len(attachment.get('data', '')))
+                    msg[-1]['content'] = [
+                        {"type": "image", "image": data_url},
+                        {"type": "text", "text": prompt_text}
+                    ]
         
-        ec, pc = 0, len(llm.tokenize(json.dumps(msg).encode()))
+        prompt_for_count = json.dumps(msg).encode() if not vision_requested else json.dumps(data.get('messages', [])).encode()
+        ec, pc = 0, len(llm.tokenize(prompt_for_count))
         try:
             for out in llm.create_chat_completion(messages=msg, stream=True, max_tokens=4096):
                 delta = out["choices"][0]["delta"]
@@ -95,7 +124,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     ec += 1; chunk({"model": mid, "message": {"role": "assistant", "content": delta["content"]}, "done": False})
             chunk({"model": mid, "message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192})
             self.wfile.write(b"0\r\n\r\n"); self.wfile.flush()
-        except: pass
+        except Exception as e:
+            logger.error("Chat generation failed for %s: %s", mid, e, exc_info=True)
+            try:
+                chunk({"error": str(e), "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192})
+                self.wfile.write(b"0\r\n\r\n"); self.wfile.flush()
+            except Exception:
+                pass
 
     def handle_image(self, raw):
         try:

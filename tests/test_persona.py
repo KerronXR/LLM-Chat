@@ -5,7 +5,7 @@ import json
 
 # Get the absolute path to the index.html
 BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX_HTML = f"file:///{BASE_PATH.replace(os.sep, '/')}/index.html"
+INDEX_HTML = os.getenv("PLAYWRIGHT_APP_URL", f"file:///{BASE_PATH.replace(os.sep, '/')}/index.html")
 
 def test_save_persona_button_exists(page: Page):
     page.goto(INDEX_HTML)

@@ -49,24 +49,62 @@ export function appendMessage(role, content, isImage = false, isError = false) {
         const urls = Array.isArray(content) ? content : [content];
         updateImageMessage(msgDiv, urls);
     } else {
-        // Simple Markdown-ish escaping for now, but handle code blocks similarly to before
-        msgDiv.textContent = content;
-        if (content.includes('```')) {
-             const parts = content.split('```');
-             let formatted = '';
-             for (let i = 0; i < parts.length; i++) {
-                 if (i % 2 === 1) formatted += `<pre><code>${parts[i]}</code></pre>`;
-                 else formatted += parts[i].replace(/\n/g, '<br>');
-             }
-             msgDiv.innerHTML = formatted;
-        } else {
-             msgDiv.innerHTML = content.replace(/\n/g, '<br>');
-        }
+        renderMessageContent(msgDiv, content);
     }
     
     DOM.chatWindow.appendChild(msgDiv);
     scrollToBottom();
     return msgDiv;
+}
+
+function renderMessageContent(container, content) {
+    const normalized = typeof content === 'object' && content !== null
+        ? content
+        : { content: String(content ?? '') };
+
+    if (normalized.content) {
+        const textBlock = document.createElement('div');
+        textBlock.className = 'message-text';
+        textBlock.innerHTML = formatMessageText(normalized.content);
+        container.appendChild(textBlock);
+    }
+
+    if (normalized.attachment) {
+        container.appendChild(buildAttachmentNode(normalized.attachment));
+    }
+}
+
+function formatMessageText(content) {
+    if (content.includes('```')) {
+        const parts = content.split('```');
+        let formatted = '';
+        for (let i = 0; i < parts.length; i++) {
+            if (i % 2 === 1) formatted += `<pre><code>${parts[i]}</code></pre>`;
+            else formatted += parts[i].replace(/\n/g, '<br>');
+        }
+        return formatted;
+    }
+
+    return content.replace(/\n/g, '<br>');
+}
+
+function buildAttachmentNode(attachment) {
+    if (attachment.kind === 'image' && attachment.dataUrl) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'message-attachment message-attachment-image';
+
+        const img = document.createElement('img');
+        img.src = attachment.dataUrl;
+        img.alt = attachment.name || 'Attached image';
+        img.onclick = () => window.open(attachment.dataUrl, '_blank');
+        wrapper.appendChild(img);
+        return wrapper;
+    }
+
+    const fileChip = document.createElement('div');
+    fileChip.className = 'message-attachment message-attachment-file';
+    fileChip.textContent = `Attached: ${attachment.name || 'File'}`;
+    return fileChip;
 }
 
 export function setGenerating(generating = true) {

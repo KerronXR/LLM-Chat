@@ -7,22 +7,26 @@ import { saveHistory } from './api.js';
 
 export async function handleSend() {
     const text = DOM.userInput.value.trim();
-    if (!text || state.isGenerating) return;
+    const attachedFile = state.attachedFile;
+    if ((!text && !attachedFile) || state.isGenerating) return;
+
+    const messageText = text || getDefaultAttachmentPrompt(attachedFile);
+    const userMessage = await buildUserMessage(messageText, attachedFile);
     
     // Clear input
     DOM.userInput.value = '';
     
     // Add user message
-    appendMessage('user', text);
-    state.messages.push({ role: 'user', content: text });
+    appendMessage('user', userMessage);
+    state.messages.push(userMessage);
     await saveHistory(state.messages);
     
     setGenerating(true);
     
     if (DOM.autoImageCheckbox.checked) {
-        await handleImageGeneration(text);
+        await handleImageGeneration(messageText);
     } else {
-        await handleLlmGeneration(text, state.attachedFile);
+        await handleLlmGeneration(attachedFile);
     }
 }
 
@@ -73,13 +77,13 @@ function clearAttachment() {
     DOM.attachmentPreview.innerHTML = '';
 }
 
-async function handleLlmGeneration(text, file = null) {
+async function handleLlmGeneration(file = null) {
     state.abortController = new AbortController();
     
     let fileData = null;
     if (file) {
         if (file.type.startsWith('image/')) {
-            fileData = { type: 'image', data: await fileToB64(file) };
+            fileData = await buildImageAttachmentPayload(file);
         } else {
             fileData = { type: 'file', name: file.name, content: await fileToText(file) };
         }
@@ -91,7 +95,7 @@ async function handleLlmGeneration(text, file = null) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: DOM.modelSelect.value,
-                messages: state.messages,
+                messages: serializeMessagesForApi(state.messages),
                 stream: true,
                 attachment: fileData
             }),
@@ -105,6 +109,7 @@ async function handleLlmGeneration(text, file = null) {
         
         const aiMsgDiv = appendMessage('ai', '...');
         let aiContent = '';
+        let streamError = null;
         
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -117,13 +122,25 @@ async function handleLlmGeneration(text, file = null) {
             const lines = chunk.split('\n');
             for (const line of lines) {
                 if (!line.trim()) continue;
+                let json;
                 try {
-                    const json = JSON.parse(line);
-                    if (json.message) {
-                        aiContent += json.message.content;
-                        aiMsgDiv.innerHTML = aiContent.replace(/\n/g, '<br>');
-                    }
+                    json = JSON.parse(line);
+                } catch (e) {
+                    console.error('Parse error:', e, line);
+                    continue;
+                }
+
+                if (json.error) {
+                    streamError = json.error;
+                }
+                if (json.message) {
+                    aiContent += json.message.content;
+                    aiMsgDiv.innerHTML = aiContent.replace(/\n/g, '<br>');
+                }
                 if (json.done) {
+                    if (streamError) {
+                        throw new Error(streamError);
+                    }
                     state.messages.push({ role: 'assistant', content: aiContent });
                     state.contextSize = json.prompt_eval_count + json.eval_count;
                     state.maxContext = json.context_length || 8192;
@@ -133,7 +150,6 @@ async function handleLlmGeneration(text, file = null) {
                     // Save history after AI response
                     await saveHistory(state.messages);
                 }
-                } catch (e) { console.error('Parse error:', e); }
             }
         }
     } catch (err) {
@@ -299,4 +315,81 @@ async function fileToText(file) {
         reader.onerror = reject;
         reader.readAsText(file);
     });
+}
+
+async function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+async function buildImageAttachmentPayload(file) {
+    const normalized = await normalizeImageForModel(file);
+    return {
+        type: 'image',
+        data: normalized.dataUrl.split(',')[1],
+        mimeType: normalized.mimeType
+    };
+}
+
+async function normalizeImageForModel(file) {
+    const sourceDataUrl = await fileToDataUrl(file);
+    const img = await loadImageElement(sourceDataUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth || img.width;
+    canvas.height = img.naturalHeight || img.height;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not prepare image for analysis.');
+
+    // Flatten onto white so transparent PNG/WebP inputs become a stable JPEG.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+
+    const convertedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    return {
+        dataUrl: convertedDataUrl,
+        mimeType: 'image/jpeg'
+    };
+}
+
+async function loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Unsupported image format.'));
+        img.src = src;
+    });
+}
+
+async function buildUserMessage(text, file) {
+    const message = { role: 'user', content: text };
+    if (!file) return message;
+
+    message.attachment = {
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        kind: file.type.startsWith('image/') ? 'image' : 'file'
+    };
+
+    if (message.attachment.kind === 'image') {
+        message.attachment.dataUrl = await fileToDataUrl(file);
+    }
+
+    return message;
+}
+
+function serializeMessagesForApi(messages) {
+    return messages.map(({ role, content }) => ({ role, content }));
+}
+
+function getDefaultAttachmentPrompt(file) {
+    if (!file) return '';
+    return file.type.startsWith('image/')
+        ? 'Please analyze this attached image.'
+        : `Please analyze the attached file: ${file.name}`;
 }

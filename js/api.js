@@ -34,6 +34,18 @@ export async function getHistory() {
     }
 }
 
+export async function getPersona() {
+    try {
+        const res = await fetch('/persona.txt');
+        if (res.status === 401) { window.location.href = '/login.html'; return ''; }
+        if (!res.ok) return '';
+        return await res.text();
+    } catch (err) {
+        console.error('Failed to get persona:', err);
+        return '';
+    }
+}
+
 export async function saveHistory(messages) {
     try {
         await fetch('/api/history', {

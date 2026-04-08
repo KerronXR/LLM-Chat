@@ -4,7 +4,7 @@ import os
 import json
 
 # Use the local server for tests to avoid ESM over file:// issues
-INDEX_HTML = "http://localhost:8000/index.html"
+INDEX_HTML = os.getenv("PLAYWRIGHT_APP_URL", "http://127.0.0.1:8765/index.html")
 
 def test_export_conversation_triggers_download(page: Page):
     # Log console messages

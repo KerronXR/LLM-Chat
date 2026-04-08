@@ -17,6 +17,10 @@ MODELS_TO_DOWNLOAD = {
     "google-gemma-4-e4b-it:latest": {
         "repo": "bartowski/google_gemma-4-E4B-it-GGUF",
         "filename": "google_gemma-4-E4B-it-Q8_0.gguf"
+    },
+    "gemma-4-e4b-it-heretic:latest": {
+        "repo": "Abhiray/gemma-4-E4B-it-heretic-GGUF",
+        "filename": "gemma-4-E4B-it-heretic-Q8_0.gguf"
     }
 }
 

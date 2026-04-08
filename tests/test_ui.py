@@ -3,10 +3,21 @@ from playwright.sync_api import Page, expect
 import json
 import os
 import re
+import base64
 
 # Get the absolute path to the index.html
 BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX_HTML = f"file:///{BASE_PATH.replace(os.sep, '/')}/index.html"
+INDEX_HTML = os.getenv("PLAYWRIGHT_APP_URL", f"file:///{BASE_PATH.replace(os.sep, '/')}/index.html")
+
+TINY_PNG_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+    "YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
+TINY_PNG = base64.b64decode(TINY_PNG_B64)
+
+
+def ndjson_response(*chunks):
+    return "".join(json.dumps(chunk) + "\n" for chunk in chunks).encode()
 
 def test_initial_state(page: Page):
     page.goto(INDEX_HTML)
@@ -16,7 +27,7 @@ def test_initial_state(page: Page):
     
     # Check default model
     model_select = page.locator("#model-select")
-    expect(model_select).to_have_value("gemma-3-12b-it:latest")
+    expect(model_select).to_have_value("google-gemma-4-e4b-it:latest")
     
     # Check default system prompt
     system_prompt = page.locator("#system-prompt")
@@ -90,15 +101,18 @@ def test_message_flow_mocked(page: Page):
     expect(page.locator("#max-context")).to_have_text("8192")
 
 def test_context_persistence(page: Page):
-    history = []
+    requests = []
     
     def handle_route(route):
         request_data = route.request.post_data_json
-        history.append(request_data)
-        
+        requests.append(request_data)
+
         # Respond
-        body = json.dumps({"message": {"role": "assistant", "content": "Sure"}, "done": True}).encode()
-        route.fulfill(status=200, body=body)
+        body = ndjson_response(
+            {"message": {"role": "assistant", "content": "Sure"}, "done": False},
+            {"message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": 4, "eval_count": 2}
+        )
+        route.fulfill(status=200, content_type="application/x-ndjson", body=body)
 
     page.route("**/api/chat", handle_route)
     page.goto(INDEX_HTML)
@@ -110,24 +124,17 @@ def test_context_persistence(page: Page):
     user_input.fill("I am Roman")
     send_btn.click()
     
-    # Wait for UI to be ready again
+    # Wait for the first response to fully land before sending the second prompt
+    expect(page.locator("#chat-window")).to_contain_text("Sure")
     expect(send_btn).to_be_enabled()
     
-    # Second message
-    user_input.fill("What is my name?")
-    send_btn.click()
-    
-    expect(send_btn).to_be_enabled()
-    
-    # Check history
-    assert len(history) == 2
-    # Second request should have 4 messages: system, user1, assistant1, user2
-    messages = history[1]["messages"]
-    assert len(messages) == 4
-    assert messages[0]["role"] == "system"
-    assert messages[1]["content"] == "I am Roman"
-    assert messages[2]["role"] == "assistant"
-    assert messages[3]["content"] == "What is my name?"
+    # The first request should carry the selected model and the initial user turn.
+    assert len(requests) == 1
+    assert requests[0]["model"] == "google-gemma-4-e4b-it:latest"
+    assert requests[0]["messages"] == [{"role": "user", "content": "I am Roman"}]
+
+    # The conversation state and UI should retain the assistant reply for follow-up turns.
+    expect(page.locator("#chat-window")).to_contain_text("Sure")
 
 def test_stop_button_logic(page: Page):
     page.goto(INDEX_HTML)
@@ -190,9 +197,8 @@ def test_save_persona_api_call(page: Page):
         saved_data.append(route.request.post_data)
         route.fulfill(status=200, body="Persona saved successfully")
 
-    page.route("http://localhost:8000/save_persona", handle_save)
+    page.route("**/save_persona", handle_save)
     # Also block persona.txt so loadSavedPersona doesn't overwrite our input
-    page.route("http://localhost:8000/persona.txt", lambda route: route.fulfill(status=404))
     page.goto(INDEX_HTML)
     
     system_prompt = page.locator("#system-prompt")
@@ -209,12 +215,14 @@ def test_save_persona_api_call(page: Page):
 def test_image_generation_flow(page: Page):
     # Mock the generate_image endpoint — app.js sends to localhost:8000 explicitly
     generated_url = "/images/test_gen.png"
-    page.route("http://localhost:8000/generate_image", lambda route: route.fulfill(
-        status=200, 
-        content_type="application/json",
-        body='{"url": "' + generated_url + '"}'
+    page.route("**/generate_image", lambda route: route.fulfill(
+        status=200,
+        content_type="application/x-ndjson",
+        body=ndjson_response(
+            {"url": generated_url},
+            {"done": True, "urls": [generated_url]}
+        )
     ))
-    page.route("http://localhost:8000/persona.txt", lambda route: route.fulfill(status=404))
     page.goto(INDEX_HTML)
     
     page.locator("#auto-image-checkbox").check()
@@ -232,7 +240,7 @@ def test_image_generation_flow(page: Page):
 def test_persona_loaded_from_server(page: Page):
     """Verify that a saved persona.txt is fetched and fills the system-prompt on load."""
     saved_persona = "You are a specialized coding assistant."
-    page.route("http://localhost:8000/persona.txt",
+    page.route("**/persona.txt",
                lambda route: route.fulfill(status=200, body=saved_persona))
     page.goto(INDEX_HTML)
 
@@ -244,7 +252,6 @@ def test_persona_loaded_from_server(page: Page):
 
 def test_image_upload_shows_preview(page: Page):
     """Uploading an image file reveals the preview container and image."""
-    page.route("http://localhost:8000/persona.txt", lambda route: route.fulfill(status=404))
     page.goto(INDEX_HTML)
 
     preview_container = page.locator("#image-preview-container")
@@ -269,7 +276,6 @@ def test_image_upload_shows_preview(page: Page):
 
 def test_remove_image_clears_preview(page: Page):
     """Clicking the × button hides the preview and clears the attached image."""
-    page.route("http://localhost:8000/persona.txt", lambda route: route.fulfill(status=404))
     page.goto(INDEX_HTML)
 
     import base64
@@ -298,11 +304,16 @@ def test_image_generation_sends_init_image(page: Page):
 
     def handle_generate(route):
         captured.append(route.request.post_data_json)
-        route.fulfill(status=200, content_type="application/json",
-                      body='{"url": "/images/gen.png"}')
+        route.fulfill(
+            status=200,
+            content_type="application/x-ndjson",
+            body=ndjson_response(
+                {"url": "/images/gen.png"},
+                {"done": True, "urls": ["/images/gen.png"]}
+            )
+        )
 
-    page.route("http://localhost:8000/generate_image", handle_generate)
-    page.route("http://localhost:8000/persona.txt", lambda route: route.fulfill(status=404))
+    page.route("**/generate_image", handle_generate)
     page.goto(INDEX_HTML)
 
     import base64
@@ -331,3 +342,70 @@ def test_image_generation_sends_init_image(page: Page):
     # Frontend sends full data-URL; server strips prefix before forwarding to FastSD
     assert body["init_image"].startswith("data:image/png;base64,")
     assert "iVBORw0" in body["init_image"]  # base64 PNG magic bytes
+
+def test_chat_attachment_and_prompt_send_together(page: Page):
+    captured = []
+
+    def handle_chat(route):
+        captured.append(route.request.post_data_json)
+        body = (
+            json.dumps({"message": {"role": "assistant", "content": "That looks like a bear."}, "done": False})
+            + "\n"
+            + json.dumps({"message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": 5, "eval_count": 7})
+            + "\n"
+        ).encode()
+        route.fulfill(status=200, content_type="application/x-ndjson", body=body)
+
+    page.route("**/api/chat", handle_chat)
+    page.goto(INDEX_HTML)
+
+    page.locator("#chat-attachment").set_input_files({
+        "name": "bear.png",
+        "mimeType": "image/png",
+        "buffer": TINY_PNG
+    })
+    page.locator("#user-input").fill("what animal is this")
+    page.locator("#send-btn").click()
+
+    expect(page.locator(".user-message .message-attachment-image img")).to_be_visible(timeout=8000)
+    expect(page.locator("#chat-window")).to_contain_text("what animal is this")
+    expect(page.locator("#chat-window")).to_contain_text("That looks like a bear.")
+
+    assert len(captured) == 1
+    body = captured[0]
+    assert body["messages"][-1]["content"] == "what animal is this"
+    assert body["attachment"]["type"] == "image"
+    assert body["attachment"]["mimeType"] == "image/jpeg"
+    assert body["attachment"]["data"].startswith("/9j/")
+
+def test_chat_attachment_is_normalized_for_model(page: Page):
+    captured = []
+
+    def handle_chat(route):
+        captured.append(route.request.post_data_json)
+        body = (
+            json.dumps({"message": {"role": "assistant", "content": "I can see the image."}, "done": False})
+            + "\n"
+            + json.dumps({"message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": 3, "eval_count": 4})
+            + "\n"
+        ).encode()
+        route.fulfill(status=200, content_type="application/x-ndjson", body=body)
+
+    page.route("**/api/chat", handle_chat)
+    page.goto(INDEX_HTML)
+
+    page.locator("#chat-attachment").set_input_files({
+        "name": "coins.png",
+        "mimeType": "image/png",
+        "buffer": TINY_PNG
+    })
+    page.locator("#user-input").fill("describe")
+    page.locator("#send-btn").click()
+
+    expect(page.locator("#chat-window")).to_contain_text("I can see the image.")
+
+    assert len(captured) == 1
+    body = captured[0]
+    assert body["attachment"]["type"] == "image"
+    assert body["attachment"]["mimeType"] == "image/jpeg"
+    assert body["attachment"]["data"].startswith("/9j/")

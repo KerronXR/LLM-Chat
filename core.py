@@ -27,11 +27,94 @@ logger = logging.getLogger(__name__)
 MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 MODELS_MAPPING = {
     "gemma-3-12b-it:latest": "gemma-3-12b-it-heretic.Q4_K_M.gguf",
-    "google-gemma-4-e4b-it:latest": "google_gemma-4-E4B-it-Q8_0.gguf"
+    "google-gemma-4-e4b-it:latest": "google_gemma-4-E4B-it-Q8_0.gguf",
+    "gemma-4-e4b-it-heretic:latest": "gemma-4-E4B-it-heretic-Q8_0.gguf"
+}
+VISION_PROJECTOR_MAPPING = {
+    "google-gemma-4-e4b-it:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf",
 }
 
 llm_instance = None
 current_model_path = None
+
+
+class GemmaVisionChatHandler:
+    def __init__(self, clip_model_path, chat_template, verbose=False):
+        from llama_cpp.llama_chat_format import Llava15ChatHandler
+
+        class _GemmaVisionHandler(Llava15ChatHandler):
+            DEFAULT_SYSTEM_MESSAGE = None
+
+            def __init__(self, clip_model_path, chat_template, verbose=False):
+                super().__init__(clip_model_path=clip_model_path, verbose=verbose)
+                self.CHAT_FORMAT = self._adapt_chat_template(chat_template)
+
+            @staticmethod
+            def _adapt_chat_template(chat_template):
+                return chat_template.replace(
+                    "{{- '\\n\\n<|image|>\\n\\n' -}}",
+                    "{{- item['image'] -}}",
+                )
+
+            @staticmethod
+            def get_image_urls(messages):
+                image_urls = []
+                for message in messages:
+                    if message.get("role") != "user":
+                        continue
+                    content = message.get("content")
+                    if not isinstance(content, list):
+                        continue
+                    for item in content:
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get("type") == "image":
+                            if isinstance(item.get("image"), str):
+                                image_urls.append(item["image"])
+                        elif item.get("type") == "image_url":
+                            if isinstance(item.get("image_url"), dict) and "url" in item["image_url"]:
+                                image_urls.append(item["image_url"]["url"])
+                            elif isinstance(item.get("image_url"), str):
+                                image_urls.append(item["image_url"])
+                return image_urls
+
+        self.handler = _GemmaVisionHandler(
+            clip_model_path=clip_model_path,
+            chat_template=chat_template,
+            verbose=verbose,
+        )
+
+
+def model_supports_vision(model_id):
+    projector = VISION_PROJECTOR_MAPPING.get(model_id)
+    return bool(projector and os.path.exists(os.path.join(MODELS_DIR, projector)))
+
+
+def _configure_chat_handler(llm, model_id):
+    projector_name = VISION_PROJECTOR_MAPPING.get(model_id)
+    if not projector_name:
+        llm.chat_handler = None
+        return llm
+
+    projector_path = os.path.join(MODELS_DIR, projector_name)
+    if not os.path.exists(projector_path):
+        logger.warning("Vision projector missing for %s: %s", model_id, projector_path)
+        llm.chat_handler = None
+        return llm
+
+    chat_template = llm.metadata.get("tokenizer.chat_template")
+    if not chat_template:
+        logger.warning("Chat template missing for %s; vision disabled.", model_id)
+        llm.chat_handler = None
+        return llm
+
+    llm.chat_handler = GemmaVisionChatHandler(
+        clip_model_path=projector_path,
+        chat_template=chat_template,
+        verbose=False,
+    ).handler
+    llm.chat_format = None
+    return llm
 
 def load_local_model(model_id):
     global llm_instance, current_model_path
@@ -49,6 +132,7 @@ def load_local_model(model_id):
         del llm_instance
         gc.collect()
     llm_instance = Llama(model_path=model_path, n_gpu_layers=0, n_ctx=8192, n_threads=max(1, os.cpu_count() - 2), verbose=False)
+    _configure_chat_handler(llm_instance, model_id)
     current_model_path = model_path
     return llm_instance
 

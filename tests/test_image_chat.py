@@ -11,7 +11,7 @@ import re
 import base64
 
 BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX_HTML = f"file:///{BASE_PATH.replace(os.sep, '/')}/index.html"
+INDEX_HTML = os.getenv("PLAYWRIGHT_APP_URL", f"file:///{BASE_PATH.replace(os.sep, '/')}/index.html")
 
 TINY_PNG_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
@@ -20,9 +20,13 @@ TINY_PNG_B64 = (
 TINY_PNG = base64.b64decode(TINY_PNG_B64)
 
 
+def ndjson_response(*chunks):
+    return "".join(json.dumps(chunk) + "\n" for chunk in chunks).encode()
+
+
 def _block_persona(page: Page):
     """Block persona.txt so loadSavedPersona doesn't interfere."""
-    page.route("http://localhost:8000/persona.txt",
+    page.route("**/persona.txt",
                lambda route: route.fulfill(status=404))
 
 
@@ -43,11 +47,17 @@ def test_auto_generate_checkbox_routes_to_fastsd(page: Page):
 
     def handle_fastsd(route):
         fastsd_called.append(route.request.post_data_json)
-        route.fulfill(status=200, content_type="application/json",
-                      body='{"url": "/images/gen_test.png"}')
+        route.fulfill(
+            status=200,
+            content_type="application/x-ndjson",
+            body=ndjson_response(
+                {"url": "/images/gen_test.png"},
+                {"done": True, "urls": ["/images/gen_test.png"]}
+            )
+        )
 
     page.route("**/api/chat", handle_llm)
-    page.route("http://localhost:8000/generate_image", handle_fastsd)
+    page.route("**/generate_image", handle_fastsd)
     _block_persona(page)
     page.goto(INDEX_HTML)
 
@@ -69,11 +79,17 @@ def test_auto_generate_checkbox_routes_to_fastsd(page: Page):
 
 def test_progress_bar_visible_during_gen(page: Page):
     """The progress bar should be visible during generation."""
-    page.route("http://localhost:8000/generate_image", lambda route: (
+    page.route("**/generate_image", lambda route: (
         # Delay the response to see the progress bar
         page.wait_for_timeout(1000),
-        route.fulfill(status=200, content_type="application/json",
-                      body='{"url": "/images/gen.png"}')
+        route.fulfill(
+            status=200,
+            content_type="application/x-ndjson",
+            body=ndjson_response(
+                {"url": "/images/gen.png"},
+                {"done": True, "urls": ["/images/gen.png"]}
+            )
+        )
     ))
     _block_persona(page)
     page.goto(INDEX_HTML)
@@ -107,7 +123,7 @@ def test_normal_message_goes_to_llm_when_checkbox_off(page: Page):
         ))
 
     page.route("**/api/chat", handle_llm)
-    page.route("http://localhost:8000/generate_image",
+    page.route("**/generate_image",
                lambda route: (fastsd_called.append(True),
                                route.fulfill(status=200, body='{}')))
     _block_persona(page)
@@ -132,10 +148,16 @@ def test_image_sent_with_checkbox_on(page: Page):
 
     def handle_generate(route):
         captured.append(route.request.post_data_json)
-        route.fulfill(status=200, content_type="application/json",
-                      body='{"url": "/images/gen.png"}')
+        route.fulfill(
+            status=200,
+            content_type="application/x-ndjson",
+            body=ndjson_response(
+                {"url": "/images/gen.png"},
+                {"done": True, "urls": ["/images/gen.png"]}
+            )
+        )
 
-    page.route("http://localhost:8000/generate_image", handle_generate)
+    page.route("**/generate_image", handle_generate)
     _block_persona(page)
     page.goto(INDEX_HTML)
 
@@ -169,7 +191,7 @@ def test_image_sent_with_checkbox_on(page: Page):
 
 def test_generate_image_error_shown_in_chat(page: Page):
     """If image generation fails, an error message should appear in chat."""
-    page.route("http://localhost:8000/generate_image",
+    page.route("**/generate_image",
                lambda route: route.fulfill(status=500, body="FastSD down"))
     _block_persona(page)
     page.goto(INDEX_HTML)
@@ -179,9 +201,9 @@ def test_generate_image_error_shown_in_chat(page: Page):
     page.locator("#send-btn").click()
 
     # Error should be shown in chat, not via an alert
-    error_msg = page.locator(".error-message")
+    error_msg = page.locator(".error-msg")
     expect(error_msg).to_be_visible(timeout=8000)
-    expect(error_msg).to_contain_text("Image generation failed")
+    expect(error_msg).to_contain_text("Image generation error")
 
 
 # -------------------------------------------------------------------
@@ -193,16 +215,22 @@ def test_image_upscale_flow(page: Page):
     upscale_called = []
 
     def handle_generate(route):
-        route.fulfill(status=200, content_type="application/json",
-                      body='{"url": "http://localhost:8000/images/gen_test.png"}')
+        route.fulfill(
+            status=200,
+            content_type="application/x-ndjson",
+            body=ndjson_response(
+                {"url": "http://localhost:8000/images/gen_test.png"},
+                {"done": True, "urls": ["http://localhost:8000/images/gen_test.png"]}
+            )
+        )
 
     def handle_upscale(route):
         upscale_called.append(route.request.post_data_json)
         route.fulfill(status=200, content_type="application/json",
                       body='{"url": "/images/upscaled_test.png"}')
 
-    page.route("http://localhost:8000/generate_image", handle_generate)
-    page.route("http://localhost:8000/upscale_image", handle_upscale)
+    page.route("**/generate_image", handle_generate)
+    page.route("**/api/upscale", handle_upscale)
     _block_persona(page)
     
     # Mock fetching the original image so it can be blobbed
@@ -222,23 +250,25 @@ def test_image_upscale_flow(page: Page):
     expect(upscale_btn).to_be_visible()
     upscale_btn.click()
 
-    # The button should change state
-    expect(upscale_btn).to_have_text(re.compile(r"Upscaled!"), timeout=8000)
-
     # A new image message should appear
     expect(page.locator(".image-msg")).to_have_count(2)
     assert len(upscale_called) == 1
-    assert upscale_called[0]["mode"] == "aura_sr"
+    assert upscale_called[0]["image_path"] == "http://localhost:8000/images/gen_test.png"
 
 def test_image_upscale_error(page: Page):
     """If upscaling fails, show an error message."""
-    page.route("http://localhost:8000/generate_image", lambda route: route.fulfill(
-        status=200, content_type="application/json", body='{"url": "http://localhost:8000/images/gen_test.png"}'
+    page.route("**/generate_image", lambda route: route.fulfill(
+        status=200,
+        content_type="application/x-ndjson",
+        body=ndjson_response(
+            {"url": "http://localhost:8000/images/gen_test.png"},
+            {"done": True, "urls": ["http://localhost:8000/images/gen_test.png"]}
+        )
     ))
     page.route("**/images/gen_test.png", lambda route: route.fulfill(
         status=200, content_type="image/png", body=TINY_PNG
     ))
-    page.route("http://localhost:8000/upscale_image", lambda route: route.fulfill(
+    page.route("**/api/upscale", lambda route: route.fulfill(
         status=500, body='{"error": "Upscale failed"}'
     ))
     _block_persona(page)
@@ -252,8 +282,6 @@ def test_image_upscale_error(page: Page):
     upscale_btn = page.locator(".upscale-btn").first
     upscale_btn.click()
 
-    error_msg = page.locator(".error-message")
+    error_msg = page.locator(".error-msg")
     expect(error_msg).to_be_visible(timeout=8000)
     expect(error_msg).to_contain_text("Upscale failed")
-
-

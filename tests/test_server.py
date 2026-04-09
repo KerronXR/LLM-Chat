@@ -10,11 +10,13 @@ import threading
 import http.client
 import time
 from datetime import datetime
+import requests
 
 # Add project root to path so we can import run_ui
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
+import run_ui
 
 # ---------------------------------------------------------------------------
 # Logging / error log tests
@@ -75,38 +77,30 @@ def test_images_dir_created():
     assert os.path.isdir(images_dir), "images/ directory was not created"
 
 
-
-
-
 # ---------------------------------------------------------------------------
 # Handler endpoint tests via a live mini-server
 # ---------------------------------------------------------------------------
 
 def _start_test_server(directory, port):
     """Start a Handler server in a daemon thread. Returns (server, original_dir)."""
-    import run_ui
-    import http.server
-    import socketserver
-
     original_dir = run_ui.DIRECTORY
     run_ui.DIRECTORY = directory
     run_ui.sessions.clear()
-    server = http.server.HTTPServer(("127.0.0.1", port), run_ui.Handler)
+    # Use ThreadedHTTPServer to ensure it doesn't block on socket read
+    server = run_ui.ThreadedHTTPServer(("127.0.0.1", port), run_ui.Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    time.sleep(0.5)
+    time.sleep(1.0)
     return server, original_dir
 
 
 def _stop_test_server(server, original_dir):
-    import run_ui
     server.shutdown()
+    server.server_close()
     run_ui.DIRECTORY = original_dir
 
 
 def _auth_headers():
-    import run_ui
-
     token = "test-session-token"
     run_ui.sessions[token] = int(time.time())
     return {"Cookie": f"session_token={token}"}
@@ -115,20 +109,21 @@ def _auth_headers():
 def test_save_persona_endpoint_writes_file():
     """POST /save_persona must write the body to persona.txt in DIRECTORY."""
     tmp = tempfile.mkdtemp()
-    server, orig = _start_test_server(tmp, port=18765)
+    port = 19123
+    server, orig = _start_test_server(tmp, port=port)
     try:
-        body = b"You are a test assistant."
-        conn = http.client.HTTPConnection("127.0.0.1", 18765)
-        headers = {"Content-Length": str(len(body)), **_auth_headers()}
-        conn.request("POST", "/save_persona", body,
-                     headers)
-        resp = conn.getresponse()
-        assert resp.status == 200, f"Expected 200, got {resp.status}"
+        url = f"http://127.0.0.1:{port}/save_persona"
+        data = "You are a test assistant."
+        # Register session
+        run_ui.sessions["test-session-token"] = int(time.time())
+        resp = requests.post(url, data=data, cookies={"session_token": "test-session-token"}, timeout=5)
+        
+        assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
 
         persona_path = os.path.join(tmp, "persona.txt")
         assert os.path.isfile(persona_path), "persona.txt was not created"
         with open(persona_path, encoding="utf-8") as f:
-            assert f.read() == "You are a test assistant."
+            assert f.read() == data
     finally:
         _stop_test_server(server, orig)
         shutil.rmtree(tmp, ignore_errors=True)
@@ -141,13 +136,15 @@ def test_persona_txt_endpoint_returns_content():
     with open(os.path.join(tmp, "persona.txt"), "w", encoding="utf-8") as f:
         f.write(persona_content)
 
-    server, orig = _start_test_server(tmp, port=18766)
+    port = 19124
+    server, orig = _start_test_server(tmp, port=port)
     try:
-        conn = http.client.HTTPConnection("127.0.0.1", 18766)
-        conn.request("GET", "/persona.txt", headers=_auth_headers())
-        resp = conn.getresponse()
-        assert resp.status == 200
-        assert resp.read().decode("utf-8") == persona_content
+        url = f"http://127.0.0.1:{port}/persona.txt"
+        # Register session
+        run_ui.sessions["test-session-token"] = int(time.time())
+        resp = requests.get(url, cookies={"session_token": "test-session-token"}, timeout=5)
+        assert resp.status_code == 200
+        assert resp.text == persona_content
     finally:
         _stop_test_server(server, orig)
         shutil.rmtree(tmp, ignore_errors=True)
@@ -156,12 +153,14 @@ def test_persona_txt_endpoint_returns_content():
 def test_persona_txt_endpoint_404_when_missing():
     """GET /persona.txt must return 404 when no persona.txt exists."""
     tmp = tempfile.mkdtemp()
-    server, orig = _start_test_server(tmp, port=18767)
+    port = 19125
+    server, orig = _start_test_server(tmp, port=port)
     try:
-        conn = http.client.HTTPConnection("127.0.0.1", 18767)
-        conn.request("GET", "/persona.txt", headers=_auth_headers())
-        resp = conn.getresponse()
-        assert resp.status == 404
+        url = f"http://127.0.0.1:{port}/persona.txt"
+        # Register session
+        run_ui.sessions["test-session-token"] = int(time.time())
+        resp = requests.get(url, cookies={"session_token": "test-session-token"}, timeout=5)
+        assert resp.status_code == 404
     finally:
         _stop_test_server(server, orig)
         shutil.rmtree(tmp, ignore_errors=True)
@@ -170,13 +169,14 @@ def test_persona_txt_endpoint_404_when_missing():
 def test_unknown_post_returns_404():
     """POST to an unknown endpoint must return 404."""
     tmp = tempfile.mkdtemp()
-    server, orig = _start_test_server(tmp, port=18769)
+    port = 19126
+    server, orig = _start_test_server(tmp, port=port)
     try:
-        conn = http.client.HTTPConnection("127.0.0.1", 18769)
-        headers = {"Content-Length": "0", **_auth_headers()}
-        conn.request("POST", "/nonexistent_endpoint", b"", headers)
-        resp = conn.getresponse()
-        assert resp.status == 404
+        url = f"http://127.0.0.1:{port}/nonexistent_endpoint"
+        # Register session
+        run_ui.sessions["test-session-token"] = int(time.time())
+        resp = requests.post(url, data=b"", cookies={"session_token": "test-session-token"}, timeout=5)
+        assert resp.status_code == 404
     finally:
         _stop_test_server(server, orig)
         shutil.rmtree(tmp, ignore_errors=True)

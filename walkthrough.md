@@ -1,136 +1,103 @@
-# Local AI Project Walkthrough
+# Local AI Project
 
 ## Overview
-This project provides a fully localized AI environment using `llama-cpp-python` for LLMs and a premium Python web UI for interaction. It features specialized "Uncensored Mode" for models like Dolphin Llama 3, chat-driven image generation via FastSD CPU, and persistent persona saving. Everything is contained within the project directory.
+Local AI env. `llama-cpp-python` LLM + web UI interaction. Uncensored mode: Dolphin Llama 3. Chat-driven image gen: `FastSD CPU`. Persistent persona. All local.
 
-- **Supported Local LLM Models (`.gguf`)**:
+- **Models (`.gguf`)**:
     * Gemma-4 E4B (Latest 2026) - [NEW]
     * Gemma-4 E4B (Heretic Uncensored) - [NEW]
     * Dolphin Llama 3 (Uncensored)
     * Gemma-3 12B (Heretic)
 
-## Core Components
-- `run_ui.py`: Main entry point. Starts web server, manages Local LLM inference & FastSD services.
-- `setup_local_llm.py`: Setup script to install dependencies and download `.gguf` models to `models/`.
-- `remove_ollama.bat`: Script to completely remove the old global Ollama installation.
-- `index.html`: Frontend UI structure.
-- `css/`: Modular design system including mobile responsiveness (`css/mobile.css`).
-- `js/`: Modular frontend logic split into state, UI, API, and event handlers.
-- `persona.txt`: Persistent storage for the custom system prompt (auto-created on save).
-- `models/`: Directory where downloaded `.gguf` model files are stored.
-- `images/`: Generated and uploaded images are stored here and served by the web server.
-- `logs/errors/`: Date-based error logs (`error_YYYY-MM-DD.log`) — written on every server run.
-- `fastsdcpu/`: FastSD CPU image generation engine (uses its own Python venv).
-- `images/`: Generated and uploaded images are stored here and served by the web server.
-- `logs/errors/`: Date-based error logs (`error_YYYY-MM-DD.log`) — written on every server run.
-- `fastsdcpu/`: FastSD CPU image generation engine (uses its own Python venv in `fastsdcpu/env/`).
+## Core
+- `run_ui.py`: Main entry. Start web server. Manage LLM + `FastSD`.
+- `setup_local_llm.py`: Setup. Install deps. Download `.gguf` → `models/`.
+- `remove_ollama.bat`: Kill global Ollama.
+- `index.html`: UI structure.
+- `css/`: Modular design. Mobile responsive: `css/mobile.css`.
+- `js/`: Modular logic (state/UI/API/handlers).
+- `persona.txt`: Custom system prompt storage. Auto-create.
+- `models/`: `.gguf` storage.
+- `images/`: Gen + upload storage.
+- `logs/errors/`: Date-based logs (`error_YYYY-MM-DD.log`). Write on run.
+- `fastsdcpu/`: `FastSD CPU` engine. Dedicated venv: `fastsdcpu/env/`.
 
 ## Features
-- **Local LLM Chat**: Full multi-turn context support using `llama-cpp-python` directly in Python.
-- **Stop Button**: Immediately terminates streaming generation.
-- **Token Tracking**: Real-time context window usage in the status bar.
-- **Persona Persistence**: Save custom system prompt to `persona.txt`; auto-loads on next visit.
-- **Auto-Generate Image Mode**: Toggle the "Auto Generate Images" checkbox in the sidebar. When active, every prompt sent in the chat will trigger image generation instead of a text response. Additional options for `Image Size` and `Batch Size` are available.
-- **Image Upscaling**: Click the "✨ Upscale Image" button below generated images to run an SD upscale pipeline, doubling the resolution while preserving details.
-- **Batch Image Generation**: When generating images, if a batch size greater than 1 is selected, multiple images will be returned and displayed in the chat.
-- **Progress Visibility**: A premium animated progress bar appears at the top of the chat window during both LLM and Image generation requests.
-- **Reference Image (img2img)**: Upload a reference image via the sidebar "Upload Reference Image" button and enable "Auto Generate Images". The system automatically includes the image as `init_image` for the generation.
-- **Error Display**: Image generation errors appear inline in chat (no alert popups).
-- **Dual Logging**: All errors printed to terminal AND written to `logs/errors/error_YYYY-MM-DD.log`.
-- **Glassmorphism UI**: Premium dark theme with smooth animations.
+- **Local Chat**: Multi-turn context. `llama-cpp-python`.
+- **Stop**: Kill stream gen.
+- **Token Track**: Context usage status bar.
+- **Persona**: Save prompt → `persona.txt`. Auto-load.
+- **Auto-Img**: Toggle sidebar check. Input text → Image gen. `Size` + `Batch` options.
+- **Upscale**: "✨ Upscale Image" button. `SD upscale` pipeline. 2x res.
+- **Batch**: Batch size > 1 → Multiple images in chat.
+- **Progress**: Animated bar top of chat. Gen start → bar visible.
+- **Ref Img (img2img)**: Sidebar "Upload Reference Image" + "Auto Generate Images". Use as `init_image`.
+- **Errors**: Inline chat display.
+- **Logging**: Terminal + `logs/errors/error_YYYY-MM-DD.log`.
+- **Theme**: Dark glassmorphism.
 
-## How Image Generation Works
-1. Enable the **Auto Generate Images** checkbox in the sidebar.
-2. Type your description in the chat input and press Enter/Send.
-3. The system routes the request to FastSD CPU on port 8001, including specified `width`, `height`, and `batch_size`.
-4. Generated images are saved to `images/` and an array of local URLs is returned.
-5. Each image appears as a clickable thumbnail in the chat window with an "✨ Upscale Image" button.
-6. Clicking "Upscale Image" triggers the `/api/upscale` endpoint in FastSD CPU using `aura_sr` for rapid and flawless upscaling on CPU without PyTorch interference.
+## Image Gen Flow
+1. Enable **Auto Generate Images**.
+2. Chat input description → Enter.
+3. Req → `FastSD CPU` port 8001. Params: `width`, `height`, `batch_size`.
+4. Gen → `images/`. Return local URLs.
+5. Thumbnail in chat. "✨ Upscale Image" button.
+6. Upscale → `/api/upscale` in `FastSD CPU`. `aura_sr` used.
 
-- **Aura SR Upscaling (FastSD CPU)**: Instantly upscale your generated images or user-provided reference images using the integrated AI upscaler directly within the chat! Uses `aura_sr` for rapid and flawless upscaling on CPU without PyTorch interference.
+- **Aura SR**: CPU upscale. Rapid. No PyTorch interference.
 
-
-### Using a Reference Image (img2img)
-1. Click "Upload Reference Image" in the sidebar to upload a reference
-2. Type `Generate Image cyberpunk style` in chat
-3. The system automatically attaches the uploaded reference image as `init_image` to FastSD CPU without requiring any extra keywords.
+### img2img
+1. Upload reference.
+2. Type `Generate Image style X`.
+3. Auto-attach `init_image` → `FastSD CPU`.
 
 ## Services
-- **Web UI & Local LLM API (`/api/chat`)**: http://localhost:8000
-- **FastSD API**: http://localhost:8001 (started automatically by `run_ui.py`)
+- **Web UI / LLM API (`/api/chat`)**: http://localhost:8000
+- **FastSD API**: http://localhost:8001 (auto-start via `run_ui.py`)
 
-## Environment Setup
-- **Virtual Environment**: This project requires Python 3.11 to install `llama-cpp-python` successfully using pre-built wheels. Recreate it with `uv` if needed: `uv venv .venv --python 3.11 --seed`
-- **Initial Setup**: Run `.venv\Scripts\python.exe setup_local_llm.py` to install dependencies and download `.gguf` models into the `models/` directory.
-- **Root Project**: Uses a virtual environment in `.venv/`. Managed via `uv`.
-- **FastSD CPU**: Uses a dedicated virtual environment in `fastsdcpu/env/` (Python 3.11).
+## Env
+- **Venv**: Python 3.11 req for `llama-cpp-python` wheels. `uv venv .venv --python 3.11 --seed`.
+- **Setup**: `.venv\Scripts\python.exe setup_local_llm.py`.
+- **Root**: `.venv/`. Managed via `uv`.
+- **FastSD CPU**: `fastsdcpu/env/` (Python 3.11).
 
-## Starting the Server
+## Start
 Run `LocalAI.bat` or:
 ```
 .venv\Scripts\python.exe run_ui.py
 ```
-The server stays alive in the terminal until you close it with **Ctrl+C**.  
-To see frontend changes, just **reload `http://localhost:8000`** — no restart needed.
+Ctrl+C stop. Reload `http://localhost:8000` for UI changes.
 
-## Testing
-Run the full functional test suite:
+## Test
+Full suite:
 ```
 python -m pytest tests/ -v
 ```
 
-### Test Files
-- `tests/test_server.py` — Server-side unit tests (endpoints, logging, process helpers)
-- `tests/test_ui.py` — Playwright UI tests (chat flow, context, persona, image gen)
-- `tests/test_images.py` — Playwright image UI element tests
-- `tests/test_image_chat.py` — Playwright tests for chat-driven image generation (keyword detection, Use My Image, error handling, sidebar cleanup)
-- `tests/test_mobile_responsiveness.py` — Playwright tests for mobile viewport layout (menu button spacing, sidebar toggle logic)
+### Files
+- `tests/test_server.py`: API endpoints / logging / process helpers.
+- `tests/test_ui.py`: Chat / context / persona / image gen.
+- `tests/test_images.py`: Image UI elements.
+- `tests/test_image_chat.py`: Keywords / Ref image / errors.
+- `tests/test_mobile_responsiveness.py`: Viewport / sidebar toggle.
+- `tests/test_process_lifecycle.py`: Background services cleanup.
+- `tests/test_slider_limits.py`: Batch UI updates.
+- `tests/test_export.py`: Conversation export.
 
-### Troubleshooting
-### WinError 10048 (Address already in use)
-```
-netstat -ano | findstr :8000
-taskkill /F /PID <PID>
-```
+## Troubleshooting
+- **Port 8000 In Use**: `netstat -ano | findstr :8000` → `taskkill /F /PID <PID>`.
+- **No Images**: `fastsdcpu/env/` check. Port 8001 check. `logs/errors/` check.
+- **Censored?**: Select **Dolphin Llama 3**. Restart server if needed.
+- **Gemma 4 fail**: Update `llama-cpp-python` >= 0.3.20. Run `setup_local_llm.py`.
 
-### FastSD not generating images?
-- Make sure `fastsdcpu/env/` exists (run `fastsdcpu/install.bat` if not).
-- Check `logs/errors/` for detailed error output.
-- FastSD API runs on port 8001 — ensure it's not blocked by another process.
-
-### Model still acting censored?
-1. Select **Dolphin Llama 3** from the model dropdown in the sidebar.
-2. The UI will automatically switch to the uncensored persona.
-3. Restart the server if you want to force a clean reload of the model.
-
-### Failed to load Gemma 4 model?
-- Ensure llama-cpp-python is updated to version 0.3.20 or newer (required for gemma4 architecture).
-- Run `.venv\Scripts\python.exe setup_local_llm.py` to ensure the `gemma-4-E4B-it-Q8_0.gguf` model is downloaded.
-
-### Failed to load Gemma 3 model?
-
-- **Mobile UI Fixes**: Streamlined the status bar on mobile to hide redundant URLs (Server/Ollama) and emphasize the **Context Tracker**, ensuring it is visible even on small screens with bottom toolbars.
-- **Improved Context Tracking**: Resolved a bug where token counts were hardcoded to 0. The server now accurately calculates prompt and completion tokens using `llm.tokenize()`, providing real-time accuracy in the UI.
-- **Architectural Cleanup**: Refactored `run_ui.py` to move core logic to `core.py`, adhering to the < 300 line project standard while improving maintenance.
-- **Stop/New Multi-Purpose Button**: Enhanced the chat input area by replacing the disabled "Stop" button with a "New" button during idle phases. Clicking "New" clears the current conversation, while the button dynamically switches to "Stop" during active generation to allow immediate termination.
-- **Robust Image Generation**: Increased the backend timeout for FastSD CPU requests to 10 minutes and individual image upscales to 5 minutes. Added `Content-Length` headers and improved protocol compliance to resolve "Failed to fetch" errors during long-running CPU generation tasks.
-- **Conversation Export**: Added a "Export Conversation" button to the sidebar. It allows users to quickly download their current chat history as a formatted, human-readable `.txt` file.
-
-- **Batch Image Generation (Streaming)**: When generating image batches, images now appear in the chat **one-by-one as they finish**. This prevents connection timeouts (like the 524 error) during long CPU inference tasks and provides a much more dynamic user experience.
-- **Increased Timeouts & Keepalive**: Frontend requests use `keepalive` and the backend uses chunked NDJSON streaming to ensure background processing completes reliably even through proxies.
-- **One-Click Upscaling**: Every image in the batch features a dedicated "✨ Upscale" button for immediate resolution enhancement.
-
-- **Graceful & Forced Cleanup**: Properly managing background processes is critical for resource cleanup. The system now uses `atexit` registration and signal handlers (SIGINT, SIGTERM, SIGBREAK) for standard exits. 
-- **LLM Memory Release (RAM Management)**: To solve the "orphaned process" issue (where RAM remains stuck after closing), the server explicitly releases the LLM instance and triggers garbage collection on shutdown. It performs a **Forced Port Cleanup** on startup to clear any existing ghost processes.
-- **Improved Process Lifecycle**: `start_fastsd` returns the process handle and includes a robust `stop_fastsd` helper that uses Windows `taskkill /F /T` for reliable termination of the entire process tree.
-- **Enhanced Stream Robustness**: Resolved "Server returned non-JSON response" errors during large batch image generation (6+ images). Updated the frontend to robustly handle NDJSON streams with mixed line endings (`\r\n` and `\n`) and added an explicit `response.ok` pre-check for more descriptive server-side error reporting.
-
-### Test Files
-- `tests/test_server.py` — Server-side unit tests (endpoints, logging, process helpers)
-- `tests/test_ui.py` — Playwright UI tests (chat flow, context, persona, image gen)
-- `tests/test_process_lifecycle.py` — Verifies that background services are manageable and correctly tracked.
-- `tests/test_slider_limits.py` — Playwright tests for batch size slider limits and UI updates.
-- `tests/test_export.py` — Playwright tests for the export conversation feature
-- `tests/test_images.py` — Playwright image UI element tests
-- `tests/test_image_chat.py` — Playwright tests for chat-driven image generation (keyword detection, Use My Image, error handling, sidebar cleanup)
-- `tests/test_mobile_responsiveness.py` — Playwright tests for mobile viewport layout (menu button spacing, sidebar toggle logic)
+## Recent
+- **Mobile UI**: Status bar slimmed. Context Tracker priority.
+- **Context Track**: Fixed hardcoded 0. Real tokens: `llm.tokenize()`.
+- **Cleanup**: `run_ui.py` logic → `core.py`.
+- **Stop/New**: UI toggle. "New" clears chat. "Stop" kills gen.
+- **Timeout**: `FastSD` req 10m. Upscale 5m. `Content-Length` headers added.
+- **Export**: Sidebar button → `.txt` history download.
+- **Streaming Batch**: Images appear one-by-one. No timeouts.
+- **Clean Shutdown**: `atexit` + signals (SIGINT/SIGTERM/SIGBREAK).
+- **RAM Manage**: LLM release + GC on exit. Startup port purge.
+- **Robust Stream**: NDJSON fix. `\r\n` support. `response.ok` check.

@@ -43,13 +43,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path in ['/login.html'] or self.path.startswith(('/js/', '/css/')): return super().do_GET()
         if not self.is_authenticated(): self.send_response(302); self.send_header('Location', '/login.html'); self.end_headers(); return
         if self.path == '/persona.txt' and os.path.exists(os.path.join(DIRECTORY, "persona.txt")):
-            self.send_response(200); self.send_header('Content-Type', 'text/plain'); self.end_headers()
-            with open(os.path.join(DIRECTORY, "persona.txt"), 'rb') as f: self.wfile.write(f.read())
+            p = os.path.join(DIRECTORY, "persona.txt"); s = os.path.getsize(p)
+            self.send_response(200); self.send_header('Content-Type', 'text/plain'); self.send_header('Content-Length', str(s)); self.end_headers()
+            with open(p, 'rb') as f: self.wfile.write(f.read())
         elif self.path == '/api/history':
-            self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers()
+            d = b'[]'
             if os.path.exists(HISTORY_FILE):
-                with open(HISTORY_FILE, 'rb') as f: self.wfile.write(f.read())
-            else: self.wfile.write(b'[]')
+                with open(HISTORY_FILE, 'rb') as f: d = f.read()
+            self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(d))); self.end_headers(); self.wfile.write(d)
         else: return super().do_GET()
 
     def do_POST(self):
@@ -67,14 +68,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             elif self.path == '/api/upscale' or self.path == '/upscale_image': self.handle_upscale(raw)
             elif self.path == '/api/history':
                 with open(HISTORY_FILE, "wb") as f: f.write(raw)
-                self.send_response(200); self.end_headers()
+                self.send_response(200); self.send_header('Content-Length', '0'); self.end_headers()
             elif self.path == '/api/logout':
                 t = self.headers.get('Cookie', '').split('session_token=')[-1].split(';')[0] if 'session_token=' in self.headers.get('Cookie', '') else None
                 if t in sessions: del sessions[t]; save_sessions()
                 self.send_response(200); self.send_header('Set-Cookie', 'session_token=; Max-Age=0; Path=/'); self.send_header('Content-Length', '0'); self.end_headers()
             elif self.path == '/save_persona':
                 with open(os.path.join(DIRECTORY, "persona.txt"), "wb") as f: f.write(raw)
-                self.send_response(200); self.end_headers()
+                self.send_response(200); self.send_header('Content-Length', '0'); self.end_headers()
             else: self.send_error(404)
         except Exception as e: logger.error(f"POST {self.path} Error: {e}", exc_info=True); self.send_error(500, str(e)) if not getattr(self.wfile, 'closed', False) else None
 

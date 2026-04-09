@@ -80,7 +80,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except Exception as e: logger.error(f"POST {self.path} Error: {e}", exc_info=True); self.send_error(500, str(e)) if not getattr(self.wfile, 'closed', False) else None
 
     def handle_chat(self, raw):
-        data = json.loads(raw); mid = data.get('model', 'gemma-3-12b-it:latest'); llm = load_local_model(mid)
+        data = json.loads(raw); mid = data.get('model', 'gemma-4-e4b-it-heretic:latest'); llm = load_local_model(mid)
         self.send_response(200); self.send_header('Content-Type', 'application/x-ndjson'); self.send_header('Transfer-Encoding', 'chunked'); self.end_headers()
         def chunk(obj):
             ds = json.dumps(obj) + "\n"; b = ds.encode()

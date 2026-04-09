@@ -100,4 +100,5 @@ python -m pytest tests/ -v
 - **Streaming Batch**: Images appear one-by-one.
 - **Clean Shutdown**: `atexit` + signals (SIGINT/SIGTERM/SIGBREAK).
 - **RAM Manage**: LLM release + GC on exit. Port purge.
+- **Default Model**: Gemma-4 Heretic main model.
 - **Robust Stream**: NDJSON fix. `\r\n` support. `response.ok` check.

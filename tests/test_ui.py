@@ -27,7 +27,7 @@ def test_initial_state(page: Page):
     
     # Check default model
     model_select = page.locator("#model-select")
-    expect(model_select).to_have_value("google-gemma-4-e4b-it:latest")
+    expect(model_select).to_have_value("gemma-4-e4b-it-heretic:latest")
     
     # Check default system prompt
     system_prompt = page.locator("#system-prompt")
@@ -130,7 +130,7 @@ def test_context_persistence(page: Page):
     
     # The first request should carry the selected model and the initial user turn.
     assert len(requests) == 1
-    assert requests[0]["model"] == "google-gemma-4-e4b-it:latest"
+    assert requests[0]["model"] == "gemma-4-e4b-it-heretic:latest"
     assert requests[0]["messages"] == [{"role": "user", "content": "I am Roman"}]
 
     # The conversation state and UI should retain the assistant reply for follow-up turns.

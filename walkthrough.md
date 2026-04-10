@@ -1,104 +1,89 @@
 # Local AI
 
 ## Overview
-Local AI env. `llama-cpp-python` LLM + web UI. Uncensored: Dolphin Llama 3. Image gen: `FastSD CPU`. Persona. Local.
+Local AI env. `llama-cpp-python` LLM + web UI. Uncensored: Dolphin Llama 3. Vision: Gemma-4. Image gen: `FastSD CPU`. Persona. Local.
 
 - **Models (`.gguf`)**:
-    * Gemma-4 E4B (Latest 2026)
-    * Gemma-4 E4B (Heretic Uncensored)
+    * Gemma-4 E4B (Latest 2026) + Vision
+    * Gemma-4 E4B (Heretic Uncensored) + Vision
     * Dolphin Llama 3 (Uncensored)
     * Gemma-3 12B (Heretic)
 
 ## Core
-- `run_ui.py`: Main entry. Start server. Manage LLM, `FastSD`.
+- `run_ui.py`: Main entry. Multi-threaded. Auth. Routes.
+- `core.py`: Logic layer. Model load. Vision config. Process management.
 - `setup_local_llm.py`: Install deps. Download `.gguf` → `models/`.
-- `remove_ollama.bat`: Kill Ollama.
-- `index.html`: UI.
-- `css/`: Modular design. Mobile: `css/mobile.css`.
-- `js/`: Modular logic (state, UI, API, handlers).
-- `persona.txt`: System prompt. Auto-create.
-- `models/`: `.gguf` storage.
+- `index.html`: Chat UI. Glassmorphism.
+- `login.html`: Auth portal.
+- `css/`: Modular styles. `mobile.css` responsive.
+- `js/`: Modular logic. State. UI. API.
+- `persona.txt`: System prompt. Persistence.
+- `history.json`: Chat persistence.
+- `sessions.json`: active session tokens.
+- `models/`: Weights. `.gguf` + `mmproj`.
 - `images/`: Gen + upload storage.
-- `logs/errors/`: Date logs (`error_YYYY-MM-DD.log`).
+- `logs/errors/`: Daily logs (`error_YYYY-MM-DD.log`).
 - `fastsdcpu/`: `FastSD CPU` engine. Venv: `fastsdcpu/env/`.
 
 ## Features
 - **Local Chat**: Multi-turn. `llama-cpp-python`.
+- **Vision**: Image input → description. Req: **Gemma-4 E4B**.
+- **Files**: Attach text/doc → context injection.
+- **Auth**: Password (`AAaa1111$`) → Session Cookie.
 - **Stop**: Kill stream gen.
-- **Token Track**: Context status bar.
-- **Persona**: Save prompt → `persona.txt`. Auto-load.
-- **Auto-Img**: Sidebar toggle. Input → Image gen. `Size`, `Batch` options.
-- **Upscale**: "✨ Upscale Image" button. `SD upscale`. 2x res.
-- **Batch**: Batch size > 1 → Multiple images.
-- **Progress**: Animated bar.
-- **Ref Img (img2img)**: Upload reference. Use as `init_image`.
-- **Errors**: Chat display.
-- **Logging**: Terminal + `logs/errors/`.
+- **Token Track**: Context status bar. Tokenize → `n_ctx` limit.
+- **Persona**: Custom prompt → `persona.txt`. Auto-injection.
+- **Auto-Img**: Chat desc → SD prompt. Side-toggle.
+- **Upscale**: `aura_sr`. 2x res.
+- **Batch**: Multiple images sequential.
 - **Theme**: Dark glassmorphism.
+
+## Vision Flow
+1. Select **Gemma-4 E4B** model.
+2. `core.py` checks `mmproj` projector weight.
+3. `GemmaVisionChatHandler` adapts template.
+4. UI Upload → Base64 → `attachment` JSON.
+5. Server: Role `user` msg → List `[{type: image}, {type: text}]`.
+6. `llm.create_chat_completion` process.
 
 ## Image Gen Flow
 1. Enable **Auto Generate Images**.
-2. Chat description → Enter.
-3. Req → `FastSD CPU` port 8001. Params: `width`, `height`, `batch_size`.
-4. Gen → `images/`. Return local URLs.
-5. Thumbnail in chat. "✨ Upscale Image".
-6. Upscale → `/api/upscale` in `FastSD CPU`. `aura_sr`.
+2. Prompt → `/generate_image`.
+3. Server → `FastSD CPU` (localhost:8001).
+4. `use_openvino`: True. Port: 8001.
+5. Gen → `images/`. NDJSON stream URLs → UI.
+6. "✨ Upscale" → `/api/upscale` → `FastSD`.
 
-- **Aura SR**: CPU upscale. Rapid.
-
-### img2img
-1. Upload reference.
-2. Type `Generate Image style X`.
-3. Auto-attach `init_image` → `FastSD CPU`.
+## Lifecycle & RAM
+- **Startup**: `force_cleanup_port` kills ghost 8000/8001.
+- **Switch Model**: `cleanup_llm` calls `del` + `gc.collect()`.
+- **Shutdown**: `atexit` + signals (`SIGINT`, `SIGTERM`, `SIGBREAK`).
+- **Cleanup**: Force kill `fastsd_process` tree via `taskkill /F /T`.
 
 ## Services
-- **Web UI / LLM API (`/api/chat`)**: http://localhost:8000
-- **FastSD API**: http://localhost:8001 (auto-start `run_ui.py`)
+- **Web UI / API**: http://localhost:8000
+- **FastSD API**: http://localhost:8001
 
 ## Env
-- **Venv**: Python 3.11 req. `uv venv .venv --python 3.11 --seed`.
-- **Setup**: `.venv\Scripts\python.exe setup_local_llm.py`.
-- **Root**: `.venv/`. Managed `uv`.
-- **FastSD CPU**: `fastsdcpu/env/` (Python 3.11).
+- **Venv**: Python 3.11. `uv venv`.
+- **FastSD**: `fastsdcpu/env/`. OpenVINO libs added to `PATH`.
 
 ## Start
 Run `LocalAI.bat` or:
 ```
 .venv\Scripts\python.exe run_ui.py
 ```
-Ctrl+C stop. Reload `http://localhost:8000` for UI.
 
 ## Test
-Full suite:
 ```
 python -m pytest tests/ -v
 ```
-
-### Files
-- `tests/test_server.py`: API endpoints, logging, process helpers.
+- `tests/test_server.py`: API endpoints, auth, logging.
 - `tests/test_ui.py`: Chat, context, persona, image gen.
-- `tests/test_images.py`: Image UI.
-- `tests/test_image_chat.py`: Keywords, Ref image, errors.
-- `tests/test_mobile_responsiveness.py`: Viewport, sidebar.
-- `tests/test_process_lifecycle.py`: Background services cleanup.
-- `tests/test_slider_limits.py`: Batch UI.
-- `tests/test_export.py`: Conversation export.
+- `tests/test_images.py`: Image UI, upscale.
+- `tests/test_vision.py`: Image analysis check.
 
 ## Troubleshooting
-- **Port 8000 In Use**: `netstat -ano | findstr :8000` → `taskkill /F /PID <PID>`.
-- **No Images**: `fastsdcpu/env/` check. Port 8001 check. `logs/errors/` check.
-- **Censored?**: Select **Dolphin Llama 3**. Restart server.
-- **Gemma 4 fail**: Update `llama-cpp-python` >= 0.3.20. Run `setup_local_llm.py`.
-
-## Recent
-- **Mobile UI**: Status bar slimmed. Context Tracker priority.
-- **Context Track**: Fixed hardcoded 0. Real tokens: `llm.tokenize()`.
-- **Cleanup**: `run_ui.py` logic → `core.py`.
-- **Stop/New**: UI toggle. "New" clears chat. "Stop" kills gen.
-- **Timeout Fix**: `Content-Length` added persona/history. (Test pass).
-- **Export**: Sidebar button → `.txt` download.
-- **Streaming Batch**: Images appear one-by-one.
-- **Clean Shutdown**: `atexit` + signals (SIGINT/SIGTERM/SIGBREAK).
-- **RAM Manage**: LLM release + GC on exit. Port purge.
-- **Default Model**: Gemma-4 Heretic main model.
-- **Robust Stream**: NDJSON fix. `\r\n` support. `response.ok` check.
+- **Port Busy**: `netstat -ano | findstr :8000`. `run_ui.py` auto-kills.
+- **Vision Fail**: Check `mmproj-google_gemma-4-E4B-it-f16.gguf` in `models/`.
+- **Memory**: 16GB RAM recommended. GC triggered on model switch.

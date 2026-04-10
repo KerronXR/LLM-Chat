@@ -32,6 +32,7 @@ MODELS_MAPPING = {
 }
 VISION_PROJECTOR_MAPPING = {
     "google-gemma-4-e4b-it:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf",
+    "gemma-4-e4b-it-heretic:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf"
 }
 
 llm_instance = None

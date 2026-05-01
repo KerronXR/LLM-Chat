@@ -24,14 +24,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Models"))
 MODELS_MAPPING = {
-    "gemma-3-12b-it:latest": "gemma-3-12b-it-heretic.Q4_K_M.gguf",
-    "google-gemma-4-e4b-it:latest": "google_gemma-4-E4B-it-Q8_0.gguf",
     "gemma-4-e4b-it-heretic:latest": "gemma-4-E4B-it-heretic-Q8_0.gguf"
 }
 VISION_PROJECTOR_MAPPING = {
-    "google-gemma-4-e4b-it:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf",
     "gemma-4-e4b-it-heretic:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf"
 }
 
@@ -132,7 +129,7 @@ def load_local_model(model_id):
     if llm_instance is not None:
         del llm_instance
         gc.collect()
-    llm_instance = Llama(model_path=model_path, n_gpu_layers=0, n_ctx=8192, n_threads=max(1, os.cpu_count() - 2), verbose=False)
+    llm_instance = Llama(model_path=model_path, n_gpu_layers=0, n_ctx=4096, n_threads=max(1, os.cpu_count() - 2), verbose=False, chat_format="gemma")
     _configure_chat_handler(llm_instance, model_id)
     current_model_path = model_path
     return llm_instance
@@ -161,18 +158,7 @@ def force_cleanup_port(port):
         except Exception as e:
             logger.error(f"Failed to force cleanup port {port}: {e}")
 
-fastsd_process = None
 
-def start_fastsd(fastsd_dir, port):
-    global fastsd_process
-    if not is_port_in_use(port):
-        logger.info(f"Starting FastSD CPU on {port}...")
-        python_exe = os.path.join(fastsd_dir, "env", "Scripts", "python.exe")
-        env = os.environ.copy()
-        env["PATH"] = env.get("PATH", "") + ";" + os.path.join(fastsd_dir, "env", "Lib", "site-packages", "openvino", "libs")
-        fastsd_process = subprocess.Popen([python_exe, os.path.join(fastsd_dir, "src", "app.py"), "--api", "--port", str(port)], cwd=fastsd_dir, env=env, creationflags=subprocess.CREATE_NO_WINDOW)
-        time.sleep(5)
-    return fastsd_process
 
 def cleanup_llm():
     """Explicitly release LLM instance and collect garbage to free memory."""
@@ -186,21 +172,4 @@ def cleanup_llm():
         gc.collect()
         logger.info("Memory collection triggered.")
 
-def stop_fastsd():
-    global fastsd_process
-    if fastsd_process:
-        logger.info("Stopping FastSD CPU...")
-        try:
-            # Try gentle first
-            fastsd_process.terminate()
-            fastsd_process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            logger.warning("Standard termination timed out. Force killing tree...")
-            if os.name == 'nt':
-                subprocess.run(['taskkill', '/F', '/T', '/PID', str(fastsd_process.pid)], capture_output=True)
-            else:
-                fastsd_process.kill()
-        except Exception as e:
-            logger.error(f"Error stopping FastSD process: {e}")
-        finally:
-            fastsd_process = None
+

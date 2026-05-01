@@ -6,18 +6,10 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Models"))
 
 # We map the UI model identifiers to HuggingFace repo and filename.
 MODELS_TO_DOWNLOAD = {
-    "gemma-3-12b-it:latest": {
-        "repo": "mradermacher/gemma-3-12b-it-heretic-GGUF",
-        "filename": "gemma-3-12b-it-heretic.Q4_K_M.gguf"
-    },
-    "google-gemma-4-e4b-it:latest": {
-        "repo": "bartowski/google_gemma-4-E4B-it-GGUF",
-        "filename": "google_gemma-4-E4B-it-Q8_0.gguf"
-    },
     "gemma-4-e4b-it-heretic:latest": {
         "repo": "Abhiray/gemma-4-E4B-it-heretic-GGUF",
         "filename": "gemma-4-E4B-it-heretic-Q8_0.gguf"

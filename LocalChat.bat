@@ -8,8 +8,15 @@ if %errorlevel% neq 0 (
     exit /b
 )
 
+set PYTHON_EXE=python
+if exist ".venv\Scripts\python.exe" (
+    set PYTHON_EXE=".venv\Scripts\python.exe"
+) else if exist "..\LLM\.venv\Scripts\python.exe" (
+    set PYTHON_EXE="..\LLM\.venv\Scripts\python.exe"
+)
+
 echo Initializing Local AI Environment...
-".\.venv\Scripts\python.exe" "C:\Users\roman\OneDrive\Documents\Code\LLM\run_ui.py"
+%PYTHON_EXE% "run_ui.py"
 if %errorlevel% neq 0 (
     echo Error: Server failed to start.
     pause

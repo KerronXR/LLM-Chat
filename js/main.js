@@ -25,17 +25,26 @@ if (!document.getElementById('mobile-toggle')) {
 // Load history
 getHistory().then(history => {
     if (history && history.length > 0) {
-        state.messages = history;
+        // Deduplicate history by comparing roles and content
+        const uniqueHistory = [];
+        const seen = new Set();
+        history.forEach(msg => {
+            const key = `${msg.role}:${msg.content}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueHistory.push(msg);
+            }
+        });
+        
+        state.messages = uniqueHistory;
         DOM.chatWindow.innerHTML = '';
         state.messages.forEach(msg => {
             const contentText = typeof msg.content === 'string' ? msg.content : '';
-            const isBatch = contentText.startsWith('Images generated:');
-            const isSingle = contentText.startsWith('Image generated:');
-            const isImage = isBatch || isSingle;
+            const isImage = contentText.startsWith('Images generated:') || contentText.startsWith('Image generated:');
             
             let content = msg;
-            if (isBatch) content = contentText.replace('Images generated: ', '').split(', ');
-            else if (isSingle) content = contentText.replace('Image generated: ', '');
+            if (contentText.startsWith('Images generated: ')) content = contentText.replace('Images generated: ', '').split(', ');
+            else if (contentText.startsWith('Image generated: ')) content = contentText.replace('Image generated: ', '');
             
             appendMessage(msg.role === 'user' ? 'user' : 'ai', content, isImage);
         });
@@ -89,36 +98,6 @@ DOM.savePersonaBtn.onclick = async () => {
     }
 };
 
-// Image Upload Handling
-DOM.uploadBtn.onclick = () => DOM.imageUpload.click();
-DOM.imageUpload.onchange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = (re) => {
-            DOM.imagePreview.src = re.target.result;
-            DOM.imagePreviewContainer.style.display = 'block';
-        };
-        reader.readAsDataURL(file);
-    }
-};
-
-DOM.removeImageBtn.onclick = () => {
-    DOM.imageUpload.value = '';
-    DOM.imagePreview.src = '';
-    DOM.imagePreviewContainer.style.display = 'none';
-};
-
-DOM.batchSizeSlider.oninput = (e) => {
-    DOM.batchSizeValue.textContent = e.target.value;
-};
-
 // Initial UI state
 updateContextUI();
 
-// Register upscale request listener
-window.addEventListener('upscale-request', async (e) => {
-    const { path, btn } = e.detail;
-    const { handleUpscale } = await import('./handlers.js');
-    handleUpscale(path, btn);
-});

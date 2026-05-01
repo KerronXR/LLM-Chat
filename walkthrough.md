@@ -1,89 +1,59 @@
 # Local AI
 
 ## Overview
-Local AI env. `llama-cpp-python` LLM + web UI. Uncensored: Dolphin Llama 3. Vision: Gemma-4. Image gen: `FastSD CPU`. Persona. Local.
+Local AI env. `llama-cpp-python` LLM + web UI. Focus: Heretic Gemma-4 with Vision.
 
 - **Models (`.gguf`)**:
-    * Gemma-4 E4B (Latest 2026) + Vision
     * Gemma-4 E4B (Heretic Uncensored) + Vision
-    * Dolphin Llama 3 (Uncensored)
-    * Gemma-3 12B (Heretic)
 
 ## Core
 - `run_ui.py`: Main entry. Multi-threaded. Auth. Routes.
-- `core.py`: Logic layer. Model load. Vision config. Process management.
-- `setup_local_llm.py`: Install deps. Download `.gguf` → `models/`.
+- `core.py`: Logic layer. Model load. Vision config.
+- `setup_local_llm.py`: Install deps. Download Heretic Gemma-4 → `../Models/`.
 - `index.html`: Chat UI. Glassmorphism.
 - `login.html`: Auth portal.
-- `css/`: Modular styles. `mobile.css` responsive.
+- `css/`: Modular styles.
 - `js/`: Modular logic. State. UI. API.
-- `persona.txt`: System prompt. Persistence.
-- `history.json`: Chat persistence.
-- `sessions.json`: active session tokens.
-- `models/`: Weights. `.gguf` + `mmproj`.
-- `images/`: Gen + upload storage.
-- `logs/errors/`: Daily logs (`error_YYYY-MM-DD.log`).
-- `fastsdcpu/`: `FastSD CPU` engine. Venv: `fastsdcpu/env/`.
+- `persona.txt`: System prompt persistence.
+- `history.json`: Chat history.
+- `../Models/`: Weights. Project parent folder.
+- `images/`: Uploaded image storage.
+- `logs/errors/`: Daily logs.
 
 ## Features
-- **Local Chat**: Multi-turn. `llama-cpp-python`.
-- **Vision**: Image input → description. Req: **Gemma-4 E4B**.
-- **Files**: Attach text/doc → context injection.
-- **Auth**: Password (`AAaa1111$`) → Session Cookie.
-- **Stop**: Kill stream gen.
-- **Token Track**: Context status bar. Tokenize → `n_ctx` limit.
-- **Persona**: Custom prompt → `persona.txt`. Auto-injection.
-- **Auto-Img**: Chat desc → SD prompt. Side-toggle.
-- **Upscale**: `aura_sr`. 2x res.
-- **Batch**: Multiple images sequential.
+- **Local Chat**: Multi-turn uncensored chat.
+- **Vision**: Image analysis. Req: **Heretic Gemma-4**.
+- **Files**: Attach text/doc for context.
+- **Auth**: Password (`AAaa1111$`).
+- **Token Track**: Context status bar.
+- **Persona**: Custom persistent system prompt.
 - **Theme**: Dark glassmorphism.
 
 ## Vision Flow
-1. Select **Gemma-4 E4B** model.
-2. `core.py` checks `mmproj` projector weight.
-3. `GemmaVisionChatHandler` adapts template.
-4. UI Upload → Base64 → `attachment` JSON.
-5. Server: Role `user` msg → List `[{type: image}, {type: text}]`.
-6. `llm.create_chat_completion` process.
-
-## Image Gen Flow
-1. Enable **Auto Generate Images**.
-2. Prompt → `/generate_image`.
-3. Server → `FastSD CPU` (localhost:8001).
-4. `use_openvino`: True. Port: 8001.
-5. Gen → `images/`. NDJSON stream URLs → UI.
-6. "✨ Upscale" → `/api/upscale` → `FastSD`.
+1. Model: **Heretic Gemma-4**.
+2. `core.py` loads `mmproj` projector.
+3. UI Upload → Base64 → `attachment` JSON.
+4. Server process vision messages.
 
 ## Lifecycle & RAM
-- **Startup**: `force_cleanup_port` kills ghost 8000/8001.
+- **Startup**: `force_cleanup_port` kills ghost 8000.
 - **Switch Model**: `cleanup_llm` calls `del` + `gc.collect()`.
-- **Shutdown**: `atexit` + signals (`SIGINT`, `SIGTERM`, `SIGBREAK`).
-- **Cleanup**: Force kill `fastsd_process` tree via `taskkill /F /T`.
+- **Shutdown**: Signal handling for clean exit.
 
 ## Services
 - **Web UI / API**: http://localhost:8000
-- **FastSD API**: http://localhost:8001
 
 ## Env
 - **Venv**: Python 3.11. `uv venv`.
-- **FastSD**: `fastsdcpu/env/`. OpenVINO libs added to `PATH`.
 
 ## Start
-Run `LocalAI.bat` or:
-```
-.venv\Scripts\python.exe run_ui.py
-```
+Run `LocalChat.bat`.
 
 ## Test
 ```
 python -m pytest tests/ -v
 ```
-- `tests/test_server.py`: API endpoints, auth, logging.
-- `tests/test_ui.py`: Chat, context, persona, image gen.
-- `tests/test_images.py`: Image UI, upscale.
-- `tests/test_vision.py`: Image analysis check.
 
 ## Troubleshooting
-- **Port Busy**: `netstat -ano | findstr :8000`. `run_ui.py` auto-kills.
-- **Vision Fail**: Check `mmproj-google_gemma-4-E4B-it-f16.gguf` in `models/`.
-- **Memory**: 16GB RAM recommended. GC triggered on model switch.
+- **Port Busy**: Auto-killed by server.
+- **Vision Fail**: Check `mmproj-google_gemma-4-E4B-it-f16.gguf` in `../Models/`.

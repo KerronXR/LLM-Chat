@@ -1,6 +1,6 @@
 import { state, DOM } from './state.js';
 import { fetchWithAbort } from './api.js';
-import { setGenerating, appendMessage, showProgress, updateImageMessage } from './ui.js';
+import { setGenerating, appendMessage, showProgress, updateImageMessage, scrollToBottom } from './ui.js';
 import { updateContextUI } from './state.js';
 import { saveHistory } from './api.js';
 
@@ -101,22 +101,33 @@ async function handleLlmGeneration(file = null) {
         if (response.status === 401) { window.location.href = '/login.html'; return; }
         if (!response.ok) throw new Error('Generation failed');
         
-        clearAttachment(); // Clear preview on successful send
+        clearAttachment();
         
         const aiMsgDiv = appendMessage('ai', '...');
         let aiContent = '';
         let streamError = null;
+        let liveTps = 0;
+
+        // Live TPS indicator
+        const tpsLive = document.createElement('div');
+        tpsLive.className = 'tps-live';
+        tpsLive.textContent = '⏳ generating...';
+        aiMsgDiv.appendChild(tpsLive);
         
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let lineBuf = '';
         
         while (true) {
             const { value, done } = await reader.read();
             if (done) break;
             
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
-            for (const line of lines) {
+            lineBuf += decoder.decode(value, { stream: true });
+            const parts = lineBuf.split('\n');
+            // Last element may be incomplete — keep in buffer
+            lineBuf = parts.pop();
+
+            for (const line of parts) {
                 if (!line.trim()) continue;
                 let json;
                 try {
@@ -131,9 +142,30 @@ async function handleLlmGeneration(file = null) {
                 }
                 if (json.message) {
                     aiContent += json.message.content;
-                    aiMsgDiv.innerHTML = aiContent.replace(/\n/g, '<br>');
+                    // Re-render text portion only
+                    const textNode = aiMsgDiv.querySelector('.message-text') || aiMsgDiv;
+                    if (textNode === aiMsgDiv) {
+                        // First content — rebuild structure
+                        aiMsgDiv.innerHTML = '';
+                        const tb = document.createElement('div');
+                        tb.className = 'message-text';
+                        aiMsgDiv.appendChild(tb);
+                        aiMsgDiv.appendChild(tpsLive);
+                    }
+                    const tb = aiMsgDiv.querySelector('.message-text');
+                    tb.innerHTML = formatAiContent(aiContent);
+                    scrollToBottom();
+                    // Yield to browser so it repaints between tokens
+                    await new Promise(r => setTimeout(r, 0));
+                }
+                if (typeof json.tps === 'number') {
+                    liveTps = json.tps;
+                    tpsLive.textContent = `⚡ ${liveTps} tok/s`;
                 }
                 if (json.done) {
+                    // Remove live indicator
+                    tpsLive.remove();
+
                     if (streamError) {
                         throw new Error(streamError);
                     }
@@ -142,8 +174,15 @@ async function handleLlmGeneration(file = null) {
                     state.maxContext = json.context_length || 8192;
                     document.getElementById('current-context').textContent = state.contextSize;
                     document.getElementById('max-context').textContent = state.maxContext;
+
+                    // Stamp final TPS badge
+                    if (typeof json.avg_tps === 'number' && json.avg_tps > 0) {
+                        const badge = document.createElement('div');
+                        badge.className = 'tps-badge';
+                        badge.textContent = `⚡ ${json.avg_tps} tok/s`;
+                        aiMsgDiv.appendChild(badge);
+                    }
                     
-                    // Save history after AI response
                     await saveHistory(state.messages);
                 }
             }
@@ -157,6 +196,19 @@ async function handleLlmGeneration(file = null) {
     } finally {
         setGenerating(false);
     }
+}
+
+function formatAiContent(content) {
+    if (content.includes('```')) {
+        const parts = content.split('```');
+        let formatted = '';
+        for (let i = 0; i < parts.length; i++) {
+            if (i % 2 === 1) formatted += `<pre><code>${parts[i]}</code></pre>`;
+            else formatted += parts[i].replace(/\n/g, '<br>');
+        }
+        return formatted;
+    }
+    return content.replace(/\n/g, '<br>');
 }
 
 

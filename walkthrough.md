@@ -21,10 +21,11 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Heretic Gemma-4 with Visio
 - `logs/errors/`: Daily logs.
 
 ## Features
-- **Local Chat**: Multi-turn uncensored chat.
-- **Vision**: Image analysis. Req: **Heretic Gemma-4**.
+- **Real-time Streaming**: Response tokens appear instantly. Anti-buffering via TCP_NODELAY.
+- **TPS Tracking**: Show generation speed (tok/s) live + final avg badge.
+- **Vision**: Image analysis. Req: Heretic Gemma-4.
 - **Files**: Attach text/doc for context.
-- **Auth**: Password (`AAaa1111$`).
+- **Auth**: Password (AAaa1111$).
 - **Token Track**: Context status bar.
 - **Persona**: Custom persistent system prompt.
 - **Theme**: Dark glassmorphism.

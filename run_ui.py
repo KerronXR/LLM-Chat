@@ -19,6 +19,7 @@ for d in [IMAGES_DIR, MODELS_DIR]:
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    disable_nagle_algorithm = True
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=DIRECTORY, **kwargs)
@@ -79,10 +80,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def handle_chat(self, raw):
         data = json.loads(raw); mid = data.get('model', 'gemma-4-e4b-it-heretic:latest'); llm = load_local_model(mid)
-        self.send_response(200); self.send_header('Content-Type', 'application/x-ndjson'); self.send_header('Transfer-Encoding', 'chunked'); self.end_headers()
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Connection', 'close')
+        self.send_header('X-Accel-Buffering', 'no')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.end_headers()
         def chunk(obj):
-            ds = json.dumps(obj) + "\n"; b = ds.encode()
-            self.wfile.write(f"{len(b):X}\r\n".encode() + b + b"\r\n"); self.wfile.flush()
+            line = json.dumps(obj) + "\n"
+            self.wfile.write(line.encode())
+            self.wfile.flush()
         msg = data.get('messages', [])
         attachment = data.get('attachment')
         vision_requested = bool(attachment and attachment.get('type') == 'image')
@@ -104,7 +111,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         "eval_count": 0,
                         "context_length": 8192
                     })
-                    self.wfile.write(b"0\r\n\r\n"); self.wfile.flush()
                     return
 
                 if msg:
@@ -120,17 +126,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         prompt_for_count = json.dumps(msg).encode() if not vision_requested else json.dumps(data.get('messages', [])).encode()
         ec, pc = 0, len(llm.tokenize(prompt_for_count))
         try:
+            gen_start = time.perf_counter()
             for out in llm.create_chat_completion(messages=msg, stream=True, max_tokens=4096):
                 delta = out["choices"][0]["delta"]
                 if "content" in delta:
-                    ec += 1; chunk({"model": mid, "message": {"role": "assistant", "content": delta["content"]}, "done": False})
-            chunk({"model": mid, "message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192})
-            self.wfile.write(b"0\r\n\r\n"); self.wfile.flush()
+                    ec += 1
+                    elapsed = time.perf_counter() - gen_start
+                    live_tps = round(ec / elapsed, 2) if elapsed > 0 else 0
+                    chunk({"model": mid, "message": {"role": "assistant", "content": delta["content"]}, "done": False, "tps": live_tps})
+            gen_elapsed = time.perf_counter() - gen_start
+            avg_tps = round(ec / gen_elapsed, 2) if gen_elapsed > 0 else 0
+            chunk({"model": mid, "message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192, "avg_tps": avg_tps})
         except Exception as e:
             logger.error("Chat generation failed for %s: %s", mid, e, exc_info=True)
             try:
                 chunk({"error": str(e), "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192})
-                self.wfile.write(b"0\r\n\r\n"); self.wfile.flush()
             except Exception:
                 pass
 

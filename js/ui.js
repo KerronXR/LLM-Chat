@@ -1,4 +1,5 @@
 import { state, DOM } from './state.js';
+import { renderMarkdown } from './markdown.js';
 
 export function showProgress(show = true) {
     if (show) DOM.progressBar.classList.remove('progress-hidden');
@@ -65,7 +66,7 @@ function renderMessageContent(container, content) {
     if (normalized.content) {
         const textBlock = document.createElement('div');
         textBlock.className = 'message-text';
-        textBlock.innerHTML = formatMessageText(normalized.content);
+        textBlock.innerHTML = renderMarkdown(normalized.content);
         container.appendChild(textBlock);
     }
 
@@ -75,17 +76,7 @@ function renderMessageContent(container, content) {
 }
 
 function formatMessageText(content) {
-    if (content.includes('```')) {
-        const parts = content.split('```');
-        let formatted = '';
-        for (let i = 0; i < parts.length; i++) {
-            if (i % 2 === 1) formatted += `<pre><code>${parts[i]}</code></pre>`;
-            else formatted += parts[i].replace(/\n/g, '<br>');
-        }
-        return formatted;
-    }
-
-    return content.replace(/\n/g, '<br>');
+    return renderMarkdown(content);
 }
 
 function buildAttachmentNode(attachment) {

@@ -3,6 +3,7 @@ import { fetchWithAbort } from './api.js';
 import { setGenerating, appendMessage, showProgress, updateImageMessage, scrollToBottom } from './ui.js';
 import { updateContextUI } from './state.js';
 import { saveHistory } from './api.js';
+import { renderMarkdown } from './markdown.js';
 
 
 export async function handleSend() {
@@ -203,16 +204,7 @@ async function handleLlmGeneration(file = null) {
 }
 
 function formatAiContent(content) {
-    if (content.includes('```')) {
-        const parts = content.split('```');
-        let formatted = '';
-        for (let i = 0; i < parts.length; i++) {
-            if (i % 2 === 1) formatted += `<pre><code>${parts[i]}</code></pre>`;
-            else formatted += parts[i].replace(/\n/g, '<br>');
-        }
-        return formatted;
-    }
-    return content.replace(/\n/g, '<br>');
+    return renderMarkdown(content);
 }
 
 

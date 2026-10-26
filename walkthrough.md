@@ -35,11 +35,13 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 with Vision + Mult
 - `setup_local_llm.py`: Dependency verification + downloads.
 - `index.html`: Dark glassmorphism UI. Model selector, dynamic attach button, context meter, chat thread.
 - `login.html`: Auth portal.
-- `css/`: Modular styling (`base.css`, `layout.css`, `chat.css`, `components.css`, `login.css`).
+- `css/`: Modular styling (`base.css`, `components.css`, `markdown.css`, `buttons.css`, `utility.css`, `mobile.css`, `login.css`).
 - `js/`: Modular frontend:
     * `state.js`: Global state management.
     * `dom.js`: Cached DOM element references.
-    * `handlers.js`: Message rendering, image downscaling to 768px JPEG, SSE reader, live TPS tracker.
+    * `markdown.js`: Zero-dependency streaming-safe Markdown + table parser (headings, lists, bold, inline/fenced code, dividers, pipe tables).
+    * `ui.js`: Message rendering, auto-scroll, image viewer.
+    * `handlers.js`: Streaming SSE reader, dynamic markdown re-render, live TPS counter, image downscaler.
     * `api.js`: Fetch client wrappers.
     * `main.js`: Initialization, model select listener, attach button toggle.
 - `LocalChat.bat`: Launch wrapper script for Windows.
@@ -74,7 +76,7 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 with Vision + Mult
 - Python: 3.11 (`..\LLM\.venv\Scripts\python.exe`).
 - Run tests:
 ```bash
-..\LLM\.venv\Scripts\python.exe -m pytest tests/test_stateful_multiturn.py tests/test_vision_and_ui.py tests/test_stream_completion.py tests/test_model_suite.py tests/test_multiturn_vision.py -v
+..\LLM\.venv\Scripts\python.exe -m pytest tests/test_markdown_ui.py tests/test_stateful_multiturn.py tests/test_vision_and_ui.py tests/test_stream_completion.py tests/test_model_suite.py tests/test_multiturn_vision.py -v
 ```
 - Start server:
 ```cmd

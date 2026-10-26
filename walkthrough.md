@@ -36,9 +36,13 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 with Vision + Mult
     * `should_trigger_search(query_text, mode)`: Evaluates `auto`, `on`, `off` with temporal/news regex heuristics.
     * `clean_search_query(text)`: Normalizes query, strips conversational prefixes, clamps to 100 chars.
     * `sanitize_search_result(text)`: Strips HTML tags, neutralizes prompt injection markers (`<system>`, `<|turn>`, `[INST]`, `ignore previous instructions`), unescapes HTML entities.
-    * `safe_duckduckgo_search(query, max_results=3, timeout=3.5)`: SSRF-safe request strictly to DuckDuckGo Lite endpoint, decodes redirect links via `uddg`, validates `http`/`https` protocols.
+    * `safe_duckduckgo_search(query, max_results=5, timeout=3.5)`: SSRF-safe request strictly to DuckDuckGo Lite endpoint, filters sponsored tracking `/y.js` ads, decodes redirect links via `uddg`, validates `http`/`https` protocols.
     * `fetch_live_weather(location, timeout=2.5)`: Fetches real-time weather metrics (temp, condition, humidity, wind) for weather queries.
-    * `format_search_prompt_context(results, max_chars=1200)`: Formats results into `<web_search_results>` reference boundary with anti-refusal guidance.
+    * `format_search_prompt_context(results, max_chars=1200)`: Formats results into `<web_search_results>` reference boundary with anti-refusal and no-raw-url guidance.
+- `search_context.py`: Multi-turn context-aware search query resolver:
+    * `resolve_contextual_query(messages)`: Resolves pronouns (`it`, `this`), dependent queries (`the price`, `specs`), continuation prompts (`And?`, `So?`), and expands price lookups with `retail price MSRP`.
+    * `should_trigger_search_from_history(messages, mode)`: Detects auto search intent across conversation turns.
+    * `extract_subject_from_history(messages)`: Extracts named product entities from markdown bolds, capitalized tokens, and search intents.
 - `setup_local_llm.py`: Dependency verification + downloads.
 - `index.html`: Dark glassmorphism UI. Model selector, dynamic attach button, web search toggle button, context meter, chat thread.
 - `login.html`: Auth portal.

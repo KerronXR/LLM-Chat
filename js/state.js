@@ -9,7 +9,8 @@ export const state = {
     contextSize: 0,
     maxContext: 8192,
     activeModel: "gemma-4-e4b-it:latest",
-    attachedFile: null
+    attachedFile: null,
+    webSearchMode: "auto"
 };
 
 export const DOM = {
@@ -27,6 +28,8 @@ export const DOM = {
     maxContext: document.getElementById('max-context'),
     chatAttachment: document.getElementById('chat-attachment'),
     attachBtn: document.getElementById('attach-btn'),
+    webSearchBtn: document.getElementById('web-search-btn'),
+    webSearchBadge: document.getElementById('web-search-badge'),
     attachmentPreview: document.getElementById('attachment-preview'),
     mobileToggle: null, // Initialized in main
     sidebarBackdrop: null,

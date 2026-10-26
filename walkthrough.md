@@ -32,18 +32,26 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 with Vision + Mult
     * `reset_chat_session()`: Clears session cache.
     * `cleanup_llm()`: Releases instance memory via `del` + `gc.collect()`.
     * `force_cleanup_port(port)`: Auto-kills ghost PID listening on port.
+- `web_search.py`: Zero-dependency DuckDuckGo Lite search provider with high-priority security hardening:
+    * `should_trigger_search(query_text, mode)`: Evaluates `auto`, `on`, `off` with temporal/news regex heuristics.
+    * `clean_search_query(text)`: Normalizes query, strips conversational prefixes, clamps to 100 chars.
+    * `sanitize_search_result(text)`: Strips HTML tags, neutralizes prompt injection markers (`<system>`, `<|turn>`, `[INST]`, `ignore previous instructions`), unescapes HTML entities.
+    * `safe_duckduckgo_search(query, max_results=3, timeout=3.5)`: SSRF-safe request strictly to DuckDuckGo Lite endpoint, decodes redirect links via `uddg`, validates `http`/`https` protocols.
+    * `fetch_live_weather(location, timeout=2.5)`: Fetches real-time weather metrics (temp, condition, humidity, wind) for weather queries.
+    * `format_search_prompt_context(results, max_chars=1200)`: Formats results into `<web_search_results>` reference boundary with anti-refusal guidance.
 - `setup_local_llm.py`: Dependency verification + downloads.
-- `index.html`: Dark glassmorphism UI. Model selector, dynamic attach button, context meter, chat thread.
+- `index.html`: Dark glassmorphism UI. Model selector, dynamic attach button, web search toggle button, context meter, chat thread.
 - `login.html`: Auth portal.
-- `css/`: Modular styling (`base.css`, `components.css`, `markdown.css`, `buttons.css`, `utility.css`, `mobile.css`, `login.css`).
+- `css/`: Modular styling (`base.css`, `components.css`, `markdown.css`, `buttons.css`, `utility.css`, `mobile.css`, `login.css`). Includes `.web-search-btn`, `.web-search-badge`, `.search-sources-container`, `.search-source-chip`.
 - `js/`: Modular frontend:
-    * `state.js`: Global state management.
+    * `state.js`: Global state management (`webSearchMode`).
     * `dom.js`: Cached DOM element references.
+    * `search.js`: Web search mode toggler (`auto`/`on`/`off`) and source chip badges renderer.
     * `markdown.js`: Zero-dependency streaming-safe Markdown + table parser (headings, lists, bold, inline/fenced code, dividers, pipe tables).
     * `ui.js`: Message rendering, auto-scroll, image viewer.
-    * `handlers.js`: Streaming SSE reader, dynamic markdown re-render, live TPS counter, image downscaler.
+    * `handlers.js`: Streaming SSE reader, search status updates, dynamic markdown re-render, live TPS counter, image downscaler.
     * `api.js`: Fetch client wrappers.
-    * `main.js`: Initialization, model select listener, attach button toggle.
+    * `main.js`: Initialization, model select listener, attach button toggle, search toggle listener.
 - `LocalChat.bat`: Launch wrapper script for Windows.
 - `history.json`: Active chat conversation persistence.
 - `persona.txt`: System persona persistence.

@@ -1,5 +1,6 @@
 import { state, DOM, updateContextUI } from './state.js';
 import { handleSend, handleStopOrNew, handleClearChat, handleExport, handleFileChange, clearAttachment, ensureJpegDataUrl } from './handlers.js';
+import { handleToggleWebSearch } from './search.js';
 import { setGenerating, toggleSidebar, appendMessage } from './ui.js';
 
 import { savePersona, getHistory, getPersona, logout } from './api.js';
@@ -78,6 +79,9 @@ DOM.exportBtn.onclick = handleExport;
 // Attachment listeners
 DOM.attachBtn.addEventListener('click', () => DOM.chatAttachment.click());
 DOM.chatAttachment.addEventListener('change', handleFileChange);
+
+// Web search toggle listener
+if (DOM.webSearchBtn) DOM.webSearchBtn.onclick = handleToggleWebSearch;
 
 function updateSystemPrompt(model) {
     if (model.includes('gemma')) {

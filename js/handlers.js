@@ -4,6 +4,7 @@ import { setGenerating, appendMessage, showProgress, updateImageMessage, scrollT
 import { updateContextUI } from './state.js';
 import { saveHistory } from './api.js';
 import { renderMarkdown } from './markdown.js';
+import { renderSourcesBadge } from './search.js';
 
 
 export async function handleSend() {
@@ -94,7 +95,8 @@ async function handleLlmGeneration(file = null) {
                 model: DOM.modelSelect.value,
                 messages: serializeMessagesForApi(state.messages),
                 stream: true,
-                attachment: fileData
+                attachment: fileData,
+                web_search: state.webSearchMode
             }),
             signal: state.abortController.signal
         });
@@ -144,6 +146,13 @@ async function handleLlmGeneration(file = null) {
 
                 if (json.error) {
                     streamError = json.error;
+                }
+                if (json.status === 'searching') {
+                    tpsLive.textContent = `🔍 Searching web (${json.query})...`;
+                }
+                if (json.status === 'sources') {
+                    tpsLive.textContent = `🌐 Found ${json.count} sources, generating...`;
+                    renderSourcesBadge(aiMsgDiv, json.sources);
                 }
                 if (json.message) {
                     aiContent += json.message.content;
@@ -409,3 +418,4 @@ function getDefaultAttachmentPrompt(file) {
         ? 'Please analyze this attached image.'
         : `Please analyze the attached file: ${file.name}`;
 }
+

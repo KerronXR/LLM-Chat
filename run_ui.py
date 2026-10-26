@@ -148,6 +148,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         {"type": "image", "image": data_url},
                         {"type": "text", "text": prompt_text}
                     ]
+
+        web_search_mode = data.get('web_search', 'auto')
+        if not attachment and msg:
+            last_c = msg[-1].get('content', '')
+            user_text_for_search = last_c if isinstance(last_c, str) else " ".join(
+                item.get('text', '') for item in last_c if isinstance(item, dict) and item.get('type') == 'text'
+            )
+            from web_search import should_trigger_search, safe_duckduckgo_search, format_search_prompt_context
+            if should_trigger_search(user_text_for_search, mode=web_search_mode):
+                chunk({"status": "searching", "query": user_text_for_search[:50], "done": False})
+                s_results = safe_duckduckgo_search(user_text_for_search)
+                if s_results:
+                    chunk({"status": "sources", "count": len(s_results), "sources": [{"title": r["title"], "url": r["url"]} for r in s_results], "done": False})
+                    s_ctx = format_search_prompt_context(s_results)
+                    if isinstance(msg[-1].get('content'), list):
+                        msg[-1]['content'].append({"type": "text", "text": f"\n\n{s_ctx}"})
+                    else:
+                        msg[-1]['content'] = f"{msg[-1].get('content', '')}\n\n{s_ctx}"
         
         def extract_text_for_count(messages_list):
             texts = []

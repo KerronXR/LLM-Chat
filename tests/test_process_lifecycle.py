@@ -9,7 +9,7 @@ import pytest
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from core import start_fastsd, stop_fastsd, is_port_in_use
+from core import force_cleanup_port, is_port_in_use
 
 def test_process_cleanup_on_startup():
     """

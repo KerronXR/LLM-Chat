@@ -10,30 +10,36 @@ MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Mode
 
 # We map the UI model identifiers to HuggingFace repo and filename.
 MODELS_TO_DOWNLOAD = {
-    "gemma-4-e4b-it-heretic:latest": {
-        "repo": "Abhiray/gemma-4-E4B-it-heretic-GGUF",
-        "filename": "gemma-4-E4B-it-heretic-Q8_0.gguf"
+    "llama-3.2-3b-instruct-uncensored:latest": {
+        "repo": "bartowski/Llama-3.2-3B-Instruct-uncensored-GGUF",
+        "filename": "Llama-3.2-3B-Instruct-uncensored-Q4_K_M.gguf"
+    },
+    "deepseek-r1-distill-qwen-7b-uncensored:latest": {
+        "repo": "mradermacher/DeepSeek-R1-Distill-Qwen-7B-Uncensored-GGUF",
+        "filename": "DeepSeek-R1-Distill-Qwen-7B-Uncensored.Q4_K_M.gguf"
+    },
+    "gemma-4-e4b-it:latest": {
+        "repo": "bartowski/google_gemma-4-E4B-it-GGUF",
+        "filename": "google_gemma-4-E4B-it-Q6_K.gguf"
     }
 }
-
 def install_dependencies():
     logger.info("Installing required python packages via uv...")
     try:
         # We use uv for fast installations.
         # Install huggingface_hub and test dependencies
-        subprocess.check_call(["uv", "pip", "install", "huggingface_hub", "pytest", "pytest-base-url", "pytest-playwright"])
+        subprocess.check_call(["uv", "pip", "install", "--system", "huggingface_hub", "pytest", "pytest-base-url", "pytest-playwright"])
         
         # Install llama-cpp-python using the pre-built CPU wheels for windows
         # Version 0.3.15+ is required for robust Gemma 3 and Gemma 4 support.
         subprocess.check_call([
-            "uv", "pip", "install", "-U",
+            "uv", "pip", "install", "-U", "--system",
             "llama-cpp-python>=0.3.20", 
             "--extra-index-url", "https://abetlen.github.io/llama-cpp-python/whl/cpu"
         ])
     except Exception as e:
-        logger.error(f"Failed to install dependencies: {e}")
-        logger.info("Note: llama-cpp-python might require C++ Build Tools on Windows if a pre-built wheel isn't available.")
-        sys.exit(1)
+        logger.warning(f"Dependency installation failed (possibly lack of permissions): {e}")
+        logger.info("Proceeding to download models anyway. Ensure dependencies are already installed.")
 
 def download_models():
     if not os.path.exists(MODELS_DIR):

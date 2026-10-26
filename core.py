@@ -26,10 +26,24 @@ logger = logging.getLogger(__name__)
 
 MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Models"))
 MODELS_MAPPING = {
-    "gemma-4-e4b-it-heretic:latest": "gemma-4-E4B-it-heretic-Q8_0.gguf"
+    "llama-3.2-3b-instruct-uncensored:latest": "Llama-3.2-3B-Instruct-uncensored-Q4_K_M.gguf",
+    "deepseek-r1-distill-qwen-7b-uncensored:latest": "DeepSeek-R1-Distill-Qwen-7B-Uncensored.Q4_K_M.gguf",
+    "gemma-4-e4b-it:latest": "google_gemma-4-E4B-it-Q6_K.gguf"
+}
+
+def get_chat_format(model_id):
+    mid = (model_id or "").lower()
+    if "llama-3" in mid or "llama3" in mid:
+        return "llama-3"
+    if "deepseek" in mid or "qwen" in mid:
+        return "chatml"
+    return "gemma"
+
+ASSISTANT_MAPPING = {
+    "gemma-4-e4b-it:latest": "gemma-4-E4B-it-assistant.Q8_0.gguf"
 }
 VISION_PROJECTOR_MAPPING = {
-    "gemma-4-e4b-it-heretic:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf"
+    "gemma-4-e4b-it:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf"
 }
 
 llm_instance = None
@@ -49,10 +63,8 @@ class GemmaVisionChatHandler:
 
             @staticmethod
             def _adapt_chat_template(chat_template):
-                return chat_template.replace(
-                    "{{- '\\n\\n<|image|>\\n\\n' -}}",
-                    "{{- item['image'] -}}",
-                )
+                res = chat_template.replace("{{- '<|image|>' -}}", "{{- item['image'] if 'image' in item else item.get('image_url', '') -}}")
+                return res.replace("{{- '\n\n<|image|>\n\n' -}}", "{{- item['image'] if 'image' in item else item.get('image_url', '') -}}")
 
             @staticmethod
             def get_image_urls(messages):
@@ -129,7 +141,20 @@ def load_local_model(model_id):
     if llm_instance is not None:
         del llm_instance
         gc.collect()
-    llm_instance = Llama(model_path=model_path, n_gpu_layers=0, n_ctx=4096, n_threads=max(1, os.cpu_count() - 2), verbose=False, chat_format="gemma")
+    
+    chat_fmt = get_chat_format(model_id)
+    n_threads = max(1, os.cpu_count() - 2)
+    logger.info(f"Initializing Llama engine: format={chat_fmt}, threads={n_threads}")
+    llm_instance = Llama(
+        model_path=model_path, 
+        n_gpu_layers=0, 
+        n_ctx=4096, 
+        n_threads=n_threads, 
+        verbose=False, 
+        chat_format=chat_fmt,
+        flash_attn=True
+    )
+    
     _configure_chat_handler(llm_instance, model_id)
     current_model_path = model_path
     return llm_instance
@@ -160,16 +185,55 @@ def force_cleanup_port(port):
 
 
 
+_chat_session = {"messages": [], "tokens": 0, "model_id": None}
+
+def reset_chat_session():
+    """Reset the multi-turn session cache."""
+    _chat_session["messages"] = []
+    _chat_session["tokens"] = 0
+    _chat_session["model_id"] = None
+
+def record_session_turn(messages, assistant_content, tokens_count, model_id=None):
+    """Record completed chat turn into session state."""
+    _chat_session["messages"] = [dict(m) for m in messages] + [{"role": "assistant", "content": assistant_content}]
+    _chat_session["tokens"] = tokens_count
+    if model_id:
+        _chat_session["model_id"] = model_id
+
+def is_session_continuation(messages, model_id=None):
+    """Check if incoming messages extend current active session without new attachments."""
+    if model_id and _chat_session["model_id"] and model_id != _chat_session["model_id"]:
+        return False
+    prior = _chat_session["messages"]
+    if not prior or len(messages) != len(prior) + 1:
+        return False
+    
+    def _norm_text(c):
+        if isinstance(c, str):
+            return c.strip()
+        if isinstance(c, list):
+            for item in c:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    return item.get("text", "").strip()
+        return ""
+
+    for p_msg, m_msg in zip(prior, messages[:-1]):
+        if p_msg.get("role") != m_msg.get("role"):
+            return False
+        if _norm_text(p_msg.get("content")) != _norm_text(m_msg.get("content")):
+            return False
+    return messages[-1].get("role") == "user"
+
 def cleanup_llm():
     """Explicitly release LLM instance and collect garbage to free memory."""
     global llm_instance
+    reset_chat_session()
     if llm_instance is not None:
         logger.info("Cleaning up LLM instance memory...")
-        # Llama class handles its own C++ destruction in __del__
-        # but we help by deleting the Python reference and collecting
         del llm_instance
         llm_instance = None
         gc.collect()
         logger.info("Memory collection triggered.")
+
 
 

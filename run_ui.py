@@ -1,5 +1,8 @@
 import http.server, socketserver, os, json, base64, time, secrets, urllib.request, logging
-from core import load_local_model, logger, MODELS_MAPPING, MODELS_DIR, model_supports_vision
+from core import (
+    load_local_model, logger, MODELS_MAPPING, MODELS_DIR,
+    model_supports_vision, is_session_continuation, record_session_turn, reset_chat_session
+)
 import atexit, signal
 
 PORT = 8000
@@ -67,6 +70,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             elif self.path == '/api/chat': self.handle_chat(raw)
             elif self.path == '/api/history':
                 with open(HISTORY_FILE, "wb") as f: f.write(raw)
+                try:
+                    if not json.loads(raw): reset_chat_session()
+                except Exception: pass
                 self.send_response(200); self.send_header('Content-Length', '0'); self.end_headers()
             elif self.path == '/api/logout':
                 t = self.headers.get('Cookie', '').split('session_token=')[-1].split(';')[0] if 'session_token=' in self.headers.get('Cookie', '') else None
@@ -79,42 +85,62 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except Exception as e: logger.error(f"POST {self.path} Error: {e}", exc_info=True); self.send_error(500, str(e)) if not getattr(self.wfile, 'closed', False) else None
 
     def handle_chat(self, raw):
-        data = json.loads(raw); mid = data.get('model', 'gemma-4-e4b-it-heretic:latest'); llm = load_local_model(mid)
+        data = json.loads(raw); mid = data.get('model', 'gemma-4-e4b-it:latest'); llm = load_local_model(mid)
         self.send_response(200)
         self.send_header('Content-Type', 'text/event-stream')
+        self.send_header('Cache-Control', 'no-cache')
         self.send_header('Connection', 'close')
         self.send_header('X-Accel-Buffering', 'no')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
         def chunk(obj):
-            line = json.dumps(obj) + "\n"
-            self.wfile.write(line.encode())
+            line = f"data: {json.dumps(obj)}\n\n"
+            self.wfile.write(line.encode('utf-8'))
             self.wfile.flush()
         msg = data.get('messages', [])
         attachment = data.get('attachment')
-        vision_requested = bool(attachment and attachment.get('type') == 'image')
+        has_history_images = any(
+            isinstance(m.get('content'), list) and any(
+                isinstance(item, dict) and item.get('type') in ('image', 'image_url')
+                for item in m['content']
+            )
+            for m in msg if isinstance(m, dict)
+        )
+        vision_requested = bool(attachment and attachment.get('type') == 'image') or has_history_images
+        if vision_requested and not model_supports_vision(mid):
+            chunk({
+                "model": mid,
+                "message": {
+                    "role": "assistant",
+                    "content": "This model cannot analyze attached images. Switch to Gemma-4 E4B (Latest 2026) and try again."
+                },
+                "done": True,
+                "prompt_eval_count": 0,
+                "eval_count": 0,
+                "context_length": 8192
+            })
+            return
+
         if attachment:
             if attachment['type'] == 'file':
                 # Append context for text/doc files
                 ctx_msg = f"\n\n[Attached File: {attachment['name']}]\n{attachment['content']}"
-                if msg: msg[-1]['content'] += ctx_msg
-            elif attachment['type'] == 'image':
-                if not model_supports_vision(mid):
-                    chunk({
-                        "model": mid,
-                        "message": {
-                            "role": "assistant",
-                            "content": "This model cannot analyze attached images. Switch to Gemma-4 E4B (Latest 2026) and try again."
-                        },
-                        "done": True,
-                        "prompt_eval_count": 0,
-                        "eval_count": 0,
-                        "context_length": 8192
-                    })
-                    return
-
                 if msg:
-                    prompt_text = msg[-1].get('content') or "Please describe this image."
+                    if isinstance(msg[-1].get('content'), list):
+                        msg[-1]['content'].append({"type": "text", "text": ctx_msg})
+                    else:
+                        msg[-1]['content'] += ctx_msg
+            elif attachment['type'] == 'image':
+                if msg:
+                    curr_content = msg[-1].get('content')
+                    if isinstance(curr_content, list):
+                        prompt_text = "Please describe this image."
+                        for item in curr_content:
+                            if isinstance(item, dict) and item.get('type') == 'text':
+                                prompt_text = item.get('text', '')
+                                break
+                    else:
+                        prompt_text = curr_content or "Please describe this image."
                     mime_type = attachment.get('mimeType') or 'image/png'
                     data_url = f"data:{mime_type};base64,{attachment['data']}"
                     logger.info("Vision attachment received: mime=%s bytes=%s", mime_type, len(attachment.get('data', '')))
@@ -123,18 +149,67 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         {"type": "text", "text": prompt_text}
                     ]
         
-        prompt_for_count = json.dumps(msg).encode() if not vision_requested else json.dumps(data.get('messages', [])).encode()
+        def extract_text_for_count(messages_list):
+            texts = []
+            for m in messages_list:
+                if not isinstance(m, dict): continue
+                c = m.get('content', '')
+                if isinstance(c, str):
+                    texts.append(c)
+                elif isinstance(c, list):
+                    for item in c:
+                        if isinstance(item, dict) and item.get('type') == 'text':
+                            texts.append(item.get('text', ''))
+            return " ".join(texts)
+
+        prompt_for_count = extract_text_for_count(msg).encode()
         ec, pc = 0, len(llm.tokenize(prompt_for_count))
         try:
-            gen_start = time.perf_counter()
-            for out in llm.create_chat_completion(messages=msg, stream=True, max_tokens=4096):
-                delta = out["choices"][0]["delta"]
-                if "content" in delta:
-                    ec += 1
-                    elapsed = time.perf_counter() - gen_start
-                    live_tps = round(ec / elapsed, 2) if elapsed > 0 else 0
-                    chunk({"model": mid, "message": {"role": "assistant", "content": delta["content"]}, "done": False, "tps": live_tps})
-            gen_elapsed = time.perf_counter() - gen_start
+            gen_start = None
+            assistant_reply = []
+            if not attachment and is_session_continuation(msg, mid):
+                logger.info("Fast follow-up turn: reusing active KV cache without image re-encode")
+                user_text = msg[-1].get('content', '')
+                if isinstance(user_text, list):
+                    user_text = " ".join(item.get('text', '') for item in user_text if isinstance(item, dict) and item.get('type') == 'text')
+                turn_prompt = f"<turn|>\n<|turn>user\n{user_text}<turn|>\n<|turn>model\n"
+                new_tokens = llm.tokenize(turn_prompt.encode('utf-8'), add_bos=False)
+                llm.eval(new_tokens)
+                pc = len(new_tokens)
+                prompt_ids = llm.input_ids[:llm.n_tokens].tolist()
+                max_gen = min(2048, max(1, 4096 - llm.n_tokens - 1))
+                for out in llm.create_completion(prompt=prompt_ids, stream=True, max_tokens=max_gen):
+                    tok = out["choices"][0].get("text", "")
+                    if tok:
+                        if "<turn|>" in tok:
+                            clean = tok.split("<turn|>")[0]
+                            if clean:
+                                ec += 1
+                                assistant_reply.append(clean)
+                                elapsed = time.perf_counter() - gen_start if gen_start else 0.001
+                                chunk({"model": mid, "message": {"role": "assistant", "content": clean}, "done": False, "tps": round(ec/elapsed, 2)})
+                            break
+                        if gen_start is None:
+                            gen_start = time.perf_counter()
+                        ec += 1
+                        assistant_reply.append(tok)
+                        elapsed = time.perf_counter() - gen_start
+                        live_tps = round(ec / elapsed, 2) if elapsed > 0 else 0
+                        chunk({"model": mid, "message": {"role": "assistant", "content": tok}, "done": False, "tps": live_tps})
+            else:
+                for out in llm.create_chat_completion(messages=msg, stream=True, max_tokens=2048):
+                    delta = out["choices"][0]["delta"]
+                    if "content" in delta:
+                        if gen_start is None:
+                            gen_start = time.perf_counter()
+                        ec += 1
+                        assistant_reply.append(delta["content"])
+                        elapsed = time.perf_counter() - gen_start
+                        live_tps = round(ec / elapsed, 2) if elapsed > 0 else 0
+                        chunk({"model": mid, "message": {"role": "assistant", "content": delta["content"]}, "done": False, "tps": live_tps})
+            full_reply = "".join(assistant_reply)
+            record_session_turn(msg, full_reply, llm.n_tokens, mid)
+            gen_elapsed = time.perf_counter() - gen_start if gen_start else 0
             avg_tps = round(ec / gen_elapsed, 2) if gen_elapsed > 0 else 0
             chunk({"model": mid, "message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192, "avg_tps": avg_tps})
         except Exception as e:
@@ -143,6 +218,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 chunk({"error": str(e), "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192})
             except Exception:
                 pass
+        finally:
+            self.close_connection = True
 
 
 

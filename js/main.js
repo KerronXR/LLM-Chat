@@ -1,5 +1,5 @@
 import { state, DOM, updateContextUI } from './state.js';
-import { handleSend, handleStopOrNew, handleClearChat, handleExport, handleFileChange } from './handlers.js';
+import { handleSend, handleStopOrNew, handleClearChat, handleExport, handleFileChange, clearAttachment, ensureJpegDataUrl } from './handlers.js';
 import { setGenerating, toggleSidebar, appendMessage } from './ui.js';
 
 import { savePersona, getHistory, getPersona, logout } from './api.js';
@@ -23,18 +23,22 @@ if (!document.getElementById('mobile-toggle')) {
 }
 
 // Load history
-getHistory().then(history => {
+getHistory().then(async history => {
     if (history && history.length > 0) {
         // Deduplicate history by comparing roles and content
         const uniqueHistory = [];
         const seen = new Set();
-        history.forEach(msg => {
+        for (const msg of history) {
             const key = `${msg.role}:${msg.content}`;
             if (!seen.has(key)) {
                 seen.add(key);
+                if (msg.attachment && msg.attachment.dataUrl && !msg.attachment.dataUrl.startsWith('data:image/jpeg')) {
+                    msg.attachment.dataUrl = await ensureJpegDataUrl(msg.attachment.dataUrl);
+                    msg.attachment.type = 'image/jpeg';
+                }
                 uniqueHistory.push(msg);
             }
-        });
+        }
         
         state.messages = uniqueHistory;
         DOM.chatWindow.innerHTML = '';
@@ -85,10 +89,23 @@ function updateSystemPrompt(model) {
     }
 }
 
-DOM.modelSelect.onchange = (e) => updateSystemPrompt(e.target.value);
+function updateModelCapabilities(model) {
+    const supportsVision = model.includes('gemma');
+    DOM.attachBtn.style.display = supportsVision ? 'flex' : 'none';
+    if (!supportsVision && state.attachedFile) {
+        clearAttachment();
+    }
+}
 
-// Initial prompt state
+DOM.modelSelect.onchange = (e) => {
+    state.activeModel = e.target.value;
+    updateSystemPrompt(e.target.value);
+    updateModelCapabilities(e.target.value);
+};
+
+// Initial state
 updateSystemPrompt(DOM.modelSelect.value);
+updateModelCapabilities(DOM.modelSelect.value);
 
 DOM.savePersonaBtn.onclick = async () => {
     const result = await savePersona(DOM.systemPrompt.value);

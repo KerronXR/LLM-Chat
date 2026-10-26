@@ -8,7 +8,7 @@ export const state = {
     abortController: null,
     contextSize: 0,
     maxContext: 8192,
-    activeModel: "gemma-4-e4b-it-heretic:latest",
+    activeModel: "gemma-4-e4b-it:latest",
     attachedFile: null
 };
 

@@ -66,7 +66,7 @@ function addRemoveButton() {
     DOM.attachmentPreview.appendChild(removeBtn);
 }
 
-function clearAttachment() {
+export function clearAttachment() {
     state.attachedFile = null;
     DOM.chatAttachment.value = '';
     DOM.attachmentPreview.classList.add('attachment-preview-hidden');
@@ -127,13 +127,17 @@ async function handleLlmGeneration(file = null) {
             // Last element may be incomplete — keep in buffer
             lineBuf = parts.pop();
 
-            for (const line of parts) {
-                if (!line.trim()) continue;
+            for (let line of parts) {
+                line = line.trim();
+                if (!line || !line.startsWith('data: ')) continue;
+                const jsonStr = line.substring(6).trim();
+                if (!jsonStr) continue;
+                
                 let json;
                 try {
-                    json = JSON.parse(line);
+                    json = JSON.parse(jsonStr);
                 } catch (e) {
-                    console.error('Parse error:', e, line);
+                    console.error('Parse error:', e, jsonStr);
                     continue;
                 }
 
@@ -155,8 +159,6 @@ async function handleLlmGeneration(file = null) {
                     const tb = aiMsgDiv.querySelector('.message-text');
                     tb.innerHTML = formatAiContent(aiContent);
                     scrollToBottom();
-                    // Yield to browser so it repaints between tokens
-                    await new Promise(r => setTimeout(r, 0));
                 }
                 if (typeof json.tps === 'number') {
                     liveTps = json.tps;
@@ -184,6 +186,8 @@ async function handleLlmGeneration(file = null) {
                     }
                     
                     await saveHistory(state.messages);
+                    try { await reader.cancel(); } catch (e) {}
+                    return;
                 }
             }
         }
@@ -297,19 +301,34 @@ async function buildImageAttachmentPayload(file) {
 async function normalizeImageForModel(file) {
     const sourceDataUrl = await fileToDataUrl(file);
     const img = await loadImageElement(sourceDataUrl);
+    
+    // Scale down to max 768px to prevent CPU vision overload
+    const MAX_DIM = 768;
+    let width = img.naturalWidth || img.width;
+    let height = img.naturalHeight || img.height;
+    if (width > MAX_DIM || height > MAX_DIM) {
+        if (width > height) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+        } else {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+        }
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = img.naturalWidth || img.width;
-    canvas.height = img.naturalHeight || img.height;
+    canvas.width = width;
+    canvas.height = height;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Could not prepare image for analysis.');
 
     // Flatten onto white so transparent PNG/WebP inputs become a stable JPEG.
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0);
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
 
-    const convertedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    const convertedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
     return {
         dataUrl: convertedDataUrl,
         mimeType: 'image/jpeg'
@@ -336,14 +355,60 @@ async function buildUserMessage(text, file) {
     };
 
     if (message.attachment.kind === 'image') {
-        message.attachment.dataUrl = await fileToDataUrl(file);
+        const normalized = await normalizeImageForModel(file);
+        message.attachment.dataUrl = normalized.dataUrl;
+        message.attachment.type = normalized.mimeType;
     }
 
     return message;
 }
 
+export async function ensureJpegDataUrl(dataUrl) {
+    if (!dataUrl) return dataUrl;
+    try {
+        const img = await loadImageElement(dataUrl);
+        const MAX_DIM = 768;
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
+        if (width > MAX_DIM || height > MAX_DIM) {
+            if (width > height) {
+                height = Math.round((height * MAX_DIM) / width);
+                width = MAX_DIM;
+            } else {
+                width = Math.round((width * MAX_DIM) / height);
+                height = MAX_DIM;
+            }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return dataUrl;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        return canvas.toDataURL('image/jpeg', 0.85);
+    } catch (e) {
+        return dataUrl;
+    }
+}
+
 function serializeMessagesForApi(messages) {
-    return messages.map(({ role, content }) => ({ role, content }));
+    return messages.map((msg) => {
+        if (Array.isArray(msg.content)) {
+            return { role: msg.role, content: msg.content };
+        }
+        if (msg.role === 'user' && msg.attachment && msg.attachment.kind === 'image' && msg.attachment.dataUrl) {
+            return {
+                role: msg.role,
+                content: [
+                    { type: 'image', image: msg.attachment.dataUrl },
+                    { type: 'text', text: msg.content }
+                ]
+            };
+        }
+        return { role: msg.role, content: msg.content };
+    });
 }
 
 function getDefaultAttachmentPrompt(file) {

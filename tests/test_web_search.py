@@ -246,4 +246,11 @@ def test_resolve_contextual_query_with_turn7_chat_history():
     assert "price" in resolved.lower() or "cost" in resolved.lower() or "msrp" in resolved.lower()
 
 
+def test_should_trigger_search_release_and_platform_queries():
+    assert should_trigger_search("Where gta 6 will be released?", mode="auto") is True
+    assert should_trigger_search("When is GTA 6 releasing", mode="auto") is True
+    assert should_trigger_search("What platforms will it launch on", mode="auto") is True
+    assert should_trigger_search("Has the new switch been announced?", mode="auto") is True
+
+
 

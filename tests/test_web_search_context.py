@@ -189,3 +189,36 @@ def test_multi_turn_history_resolution_mario_kart_chat():
     assert "Amazon" not in final_query
 
 
+def test_gta6_search_chain_resolution():
+    messages = [
+        {"role": "user", "content": "Where gta 6 will be released?"},
+        {
+            "role": "assistant",
+            "content": "As of my last update in 2023, Grand Theft Auto VI (GTA VI) has not been officially announced or released."
+        },
+        {"role": "user", "content": "Check internet"},
+        {
+            "role": "assistant",
+            "content": "Based on the information provided, there is no direct link or snippet related to the release date of Grand Theft Auto VI (GTA VI)."
+        },
+        {"role": "user", "content": "Well it was a bad search then, try again"}
+    ]
+
+    # Turn 1 should trigger search
+    assert should_trigger_search_from_history(messages[:1], mode="auto") is True
+    assert "gta 6" in resolve_contextual_query(messages[:1]).lower()
+
+    # Turn 3 "Check internet" should trigger and inherit question
+    assert should_trigger_search_from_history(messages[:3], mode="auto") is True
+    t3_query = resolve_contextual_query(messages[:3])
+    assert "internet" != t3_query.lower().strip()
+    assert ("gta 6" in t3_query.lower() or "grand theft auto" in t3_query.lower())
+    assert "2023" not in t3_query
+
+    # Turn 5 "try again" should trigger and inherit question without complaint text
+    assert should_trigger_search_from_history(messages, mode="auto") is True
+    t5_query = resolve_contextual_query(messages)
+    assert "bad search" not in t5_query.lower()
+    assert ("gta 6" in t5_query.lower() or "grand theft auto" in t5_query.lower())
+
+

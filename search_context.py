@@ -8,17 +8,58 @@ import re
 CONTINUATION_PATTERN = re.compile(
     r"^(and|so|results?|anything|what\s+is\s+it|what\s+about\s+it|did\s+you\s+find\s+(?:it|anything)?|"
     r"(?:you\s+need\s+to\s+)?research(?:\s+(?:it|this|that|online))?|"
-    r"(?:can\s+you\s+)?search(?:\s+(?:for\s+it|it|online|web))?|"
-    r"(?:please\s+)?look(?:\s+it)?\s+up(?:\s+online)?|"
-    r"(?:please\s+)?check(?:\s+it)?\s+online|"
-    r"(?:can\s+you\s+)?find(?:\s+it|\s+out)?)\??$",
+    r"(?:can\s+you\s+)?search(?:\s+(?:for\s+it|it|online|web|internet))?|"
+    r"(?:please\s+)?look(?:\s+it)?\s+up(?:\s+(?:online|internet))?|"
+    r"(?:please\s+)?check(?:\s+it)?\s+(?:online|internet|the\s+web)|"
+    r"(?:can\s+you\s+)?find(?:\s+it|\s+out)?|try\s+again|search\s+again)\??$",
     re.IGNORECASE,
 )
 
 DIRECTIVE_PATTERN = re.compile(
-    r"^(?:(?:you\s+need\s+to|can\s+you|please|go)\s+)?(?:research|search|look\s+up|check|find\s+out|google)(?:\s+(?:it|this|that|online|for|the\s+web))?[\s\.\?!]*$",
+    r"^(?:(?:you\s+need\s+to|can\s+you|please|go|just)\s+)?(?:research|search|look\s+up|check|find\s+out|google)(?:\s+(?:it|this|that|online|internet|on\s+internet|the\s+internet|the\s+web|web|for|again))?[\s\.\?!]*$",
     re.IGNORECASE,
 )
+
+RETRY_DIRECTIVE_PATTERN = re.compile(
+    r"^(?:.*(?:bad\s+search|wrong\s+search|didn\'?t\s+find).*?)?(?:please\s+)?(?:try\s+again|search\s+again|retry|redo|look\s+again|check\s+again|one\s+more\s+time)[\s\.\?!]*$",
+    re.IGNORECASE,
+)
+
+
+def is_search_directive(text: str) -> bool:
+    t = text.strip()
+    return bool(
+        DIRECTIVE_PATTERN.match(t)
+        or CONTINUATION_PATTERN.match(t)
+        or RETRY_DIRECTIVE_PATTERN.match(t)
+        or t.lower() in ("?", "...", "internet")
+    )
+
+
+def get_last_substantive_user_query(messages: list[dict]) -> str:
+    """Find the most recent user question that had genuine standalone search/topic content."""
+    for m in reversed(messages[:-1]):
+        if m.get("role") != "user":
+            continue
+        c = m.get("content", "")
+        if isinstance(c, list):
+            c = " ".join(item.get("text", "") for item in c if isinstance(item, dict) and item.get("type") == "text")
+        c = clean_search_query(c)
+        c = AFFIRMATIVE_PREFIXES.sub("", c).strip()
+        if is_search_directive(c):
+            continue
+        without_filler = re.sub(
+            r"\b(what|where|when|who|which|how|why|is|are|was|were|do|does|did|will|would|can|could|be|been|"
+            r"have|has|had|the|a|an|for|to|of|in|on|at|about|much|some|any|all|here|there|please|just|tell|me|you|"
+            r"i|we|they|give|this|that|these|those|it|its|them|one|ones|price|prices|pricing|cost|costs|how\s+much|"
+            r"pay|charge|worth|sell|buy|get)\b",
+            "",
+            c,
+            flags=re.IGNORECASE,
+        ).strip()
+        if len(re.sub(r"[^a-zA-Z0-9]+", "", without_filler)) >= 3:
+            return c
+    return ""
 
 DEPENDENT_QUERY_PATTERN = re.compile(
     r"\b(it|this|that|these|those|its|price|cost|how\s+much|specs|specifications|features|buy|where\s+to\s+buy|"
@@ -76,19 +117,33 @@ IGNORE_WORDS = re.compile(
 
 
 def extract_named_entities(text: str) -> list[str]:
-    """Extract consecutive tokens containing uppercase letters or digits."""
-    tokens = re.findall(r"\b[a-zA-Z0-9_\.-]+\b", text)
+    """Extract consecutive tokens containing uppercase letters or digits, respecting boundaries."""
+    chunks = re.split(r"(?<!\d)\.(?!\d)|[\?!;\n,]+", text)
     entities = []
-    curr = []
-    for t in tokens:
-        if any(c.isupper() or c.isdigit() for c in t):
-            curr.append(t)
-        else:
+    for chunk in chunks:
+        tokens = re.findall(r"\b[a-zA-Z0-9_\.-]+\b", chunk)
+        curr = []
+        for t in tokens:
+            if any(c.isupper() or c.isdigit() for c in t):
+                if re.match(r"^(?:19|20)\d{2}$", t) and not curr:
+                    continue
+                curr.append(t)
+            else:
+                if curr:
+                    while curr and curr[0].lower() in ("the", "a", "an"):
+                        curr.pop(0)
+                    while curr and curr[-1].lower() in ("the", "a", "an", "and", "or", "to", "in", "of"):
+                        curr.pop()
+                    if curr:
+                        entities.append(" ".join(curr))
+                    curr = []
+        if curr:
+            while curr and curr[0].lower() in ("the", "a", "an"):
+                curr.pop(0)
+            while curr and curr[-1].lower() in ("the", "a", "an", "and", "or", "to", "in", "of"):
+                curr.pop()
             if curr:
                 entities.append(" ".join(curr))
-                curr = []
-    if curr:
-        entities.append(" ".join(curr))
     return entities
 
 
@@ -115,23 +170,21 @@ def is_valid_product_candidate(text: str) -> bool:
     return True
 
 
+def _extract_content_text(message: dict) -> str:
+    content = message.get("content", "")
+    if isinstance(content, list):
+        return " ".join(item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text")
+    return str(content or "")
+
+
 def extract_subject_from_history(messages: list[dict]) -> str:
     """Extract primary named entity or topic from recent conversation turns, filtering boilerplate."""
-    # Pass 1: High confidence (search targets, product patterns, quoted titles)
-    for m in reversed(messages[:-1]):
-        content = m.get("content", "")
-        if isinstance(content, list):
-            content = " ".join(
-                item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text"
-            )
-        if not content:
-            continue
+    history_contents = [_extract_content_text(m) for m in reversed(messages[:-1])]
+    history_contents = [c for c in history_contents if c]
 
-        search_m = re.search(
-            r"(?:search\s+for|checking\s+price\s+for|looking\s+up)\s+[\'\"]?([a-zA-Z0-9\s]+?)(?:price|[\'\"]|\.|\,|$)",
-            content,
-            re.I,
-        )
+    # Pass 1: High confidence (search targets, product patterns, quoted titles)
+    for content in history_contents:
+        search_m = re.search(r"(?:search\s+for|checking\s+price\s+for|looking\s+up)\s+[\'\"]?([a-zA-Z0-9\s]+?)(?:price|[\'\"]|\.|\,|$)", content, re.I)
         if search_m:
             subj = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", search_m.group(1)).strip()
             if is_valid_product_candidate(subj):
@@ -143,34 +196,21 @@ def extract_subject_from_history(messages: list[dict]) -> str:
             if is_valid_product_candidate(prod_candidate):
                 return prod_candidate
 
-        quotes = re.findall(r'["\']([^"\']{4,60})["\']', content)
-        for q in quotes:
+        for q in re.findall(r'["\']([^"\']{4,60})["\']', content):
             clean_q = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", q).strip()
             if is_valid_product_candidate(clean_q):
                 return clean_q
 
     # Pass 2: Fallback to validated bolds and named entities
-    for m in reversed(messages[:-1]):
-        content = m.get("content", "")
-        if isinstance(content, list):
-            content = " ".join(
-                item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text"
-            )
-        if not content:
-            continue
+    for content in history_contents:
+        bolds = [re.sub(r"[^a-zA-Z0-9\s]", " ", b).strip() for b in re.findall(r"\*\*([^*]+)\*\*", content)]
+        valid_bolds = [b for b in bolds if is_valid_product_candidate(b)]
+        if valid_bolds:
+            return valid_bolds[0]
 
-        bolds = re.findall(r"\*\*([^*]+)\*\*", content)
-        if bolds:
-            clean_bolds = [re.sub(r"[^a-zA-Z0-9\s]", " ", b).strip() for b in bolds]
-            clean_bolds = [b for b in clean_bolds if is_valid_product_candidate(b)]
-            if clean_bolds:
-                return clean_bolds[0]
-
-        entities = extract_named_entities(content)
+        entities = [e for e in extract_named_entities(content) if is_valid_product_candidate(e)]
         if entities:
-            filtered = [e for e in entities if is_valid_product_candidate(e)]
-            if filtered:
-                return max(filtered, key=len)
+            return max(entities, key=len)
 
     return ""
 
@@ -179,54 +219,41 @@ def resolve_contextual_query(messages: list[dict]) -> str:
     """Resolve pronouns, follow-ups, and missing subjects across conversation history."""
     if not messages:
         return ""
-    last_msg = messages[-1].get("content", "")
-    if isinstance(last_msg, list):
-        curr_text = " ".join(
-            item.get("text", "") for item in last_msg if isinstance(item, dict) and item.get("type") == "text"
-        )
-    else:
-        curr_text = str(last_msg)
-
-    clean_curr = clean_search_query(curr_text)
-    clean_curr = AFFIRMATIVE_PREFIXES.sub("", clean_curr).strip()
-
+    curr_text = _extract_content_text(messages[-1])
+    clean_curr = AFFIRMATIVE_PREFIXES.sub("", clean_search_query(curr_text)).strip()
     if len(messages) <= 1:
         return clean_curr
 
-    history_text = " ".join(
-        m.get("content", "") if isinstance(m.get("content"), str) else "" for m in messages[:-1]
-    )
+    history_text = " ".join(_extract_content_text(m) for m in messages[:-1])
     price_context = bool(re.search(r"\b(price|cost|how\s+much)\b", history_text + " " + curr_text, re.I))
 
-    is_directive = (
-        not clean_curr
-        or bool(DIRECTIVE_PATTERN.match(clean_curr))
-        or bool(DIRECTIVE_PATTERN.match(curr_text.strip()))
-        or bool(CONTINUATION_PATTERN.match(clean_curr))
-        or clean_curr in ("?", "...")
-    )
+    is_directive = not clean_curr or is_search_directive(clean_curr) or is_search_directive(curr_text)
     if is_directive:
+        last_user_q = get_last_substantive_user_query(messages)
+        if last_user_q:
+            return last_user_q[:100]
         subject = extract_subject_from_history(messages)
         if subject:
             return f"{subject} retail price MSRP" if price_context else f"{subject} price"
         return clean_curr or curr_text[:100]
 
     has_dependent_word = bool(DEPENDENT_QUERY_PATTERN.search(clean_curr))
-    has_own_caps = bool(re.findall(r"\b[A-Z0-9][a-zA-Z0-9]*(?:\s+[A-Z0-9][a-zA-Z0-9]*)+\b", curr_text))
+    non_store = [w for w in re.findall(r"\b[A-Za-z0-9]+\b", clean_curr) if not re.match(r"^(?:ebay|amazon|google|target|walmart|bestbuy|search|check|look|find|browse|listings?|sold|prices?|cost|how|what|where|or|and|for|on|in|current|online|web|the|a|an)$", w, re.I)]
+    has_standalone_subject = len(non_store) >= 2 and any(w[0].isupper() or any(c.isdigit() for c in w) for w in non_store)
     is_weather = bool(re.search(r"\bweather\b", clean_curr, re.I))
 
-    if has_dependent_word and not has_own_caps and not is_weather:
+    if (has_dependent_word or not has_standalone_subject) and not is_weather:
         subject = extract_subject_from_history(messages)
         if subject:
-            clean_without_pronouns = re.sub(
-                r"\b(it|this|that|these|those)\b", "", clean_curr, flags=re.IGNORECASE
-            )
+            clean_without_pronouns = re.sub(r"\b(it|this|that|these|those)\b", "", clean_curr, flags=re.IGNORECASE)
             clean_without_pronouns = re.sub(r"\s+", " ", clean_without_pronouns).strip()
-            suffix = " retail price MSRP" if price_context else ""
+            is_marketplace = bool(re.search(r"\b(ebay|amazon|target|walmart|bestbuy|listings?|retail|msrp)\b", clean_without_pronouns, re.I))
+            suffix = " retail price MSRP" if price_context and not is_marketplace else ""
             res = f"{subject} {clean_without_pronouns}{suffix}".strip()
             return res[:100]
 
-    if price_context and "msrp" not in clean_curr.lower():
+    is_marketplace = bool(re.search(r"\b(ebay|amazon|target|walmart|bestbuy|listings?|retail|msrp)\b", clean_curr, re.I))
+    if price_context and not is_marketplace:
         clean_curr = f"{clean_curr} retail price MSRP"
 
     return clean_curr[:100]
@@ -234,29 +261,19 @@ def resolve_contextual_query(messages: list[dict]) -> str:
 
 def should_trigger_search_from_history(messages: list[dict], mode: str = "auto") -> bool:
     """Decide if web search should be triggered taking into account chat history."""
-    if not messages:
-        return False
-    if mode == "off":
+    if not messages or mode == "off":
         return False
     if mode == "on":
         return True
 
-    last_msg = messages[-1].get("content", "")
-    curr_text = last_msg if isinstance(last_msg, str) else " ".join(
-        item.get("text", "") for item in last_msg if isinstance(item, dict) and item.get("type") == "text"
-    )
-    clean = clean_search_query(curr_text)
-    clean = AFFIRMATIVE_PREFIXES.sub("", clean).strip()
+    curr_text = _extract_content_text(messages[-1])
+    clean = AFFIRMATIVE_PREFIXES.sub("", clean_search_query(curr_text)).strip()
 
     from web_search import should_trigger_search
     if should_trigger_search(curr_text, mode="auto") or should_trigger_search(clean, mode="auto"):
         return True
 
-    if CONTINUATION_PATTERN.match(clean) or DIRECTIVE_PATTERN.match(clean) or clean in ("?", "..."):
-        if len(messages) > 1:
-            return True
-
-    if DEPENDENT_QUERY_PATTERN.search(clean) and len(messages) > 1:
+    if len(messages) > 1 and (is_search_directive(clean) or is_search_directive(curr_text) or DEPENDENT_QUERY_PATTERN.search(clean)):
         return True
 
     return False

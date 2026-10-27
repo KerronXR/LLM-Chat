@@ -25,13 +25,14 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 and Qwen2.5-VL wit
     * `POST /api/history`: Save JSON chat history. Empty array triggers `reset_chat_session()`.
     * `POST /api/logout`: Expire session.
     * `POST /save_persona`: Save persona text.
+    * `normalize_incoming_attachments(data)`: Normalizes up to 3 attachments supporting `type: 'image'`, `kind: 'image'`, and MIME types (`image/*`), preserving `dataUrl`.
     * `build_continuation_turn(model_id, user_text)`: Formats turn tokens and stop sequences by model family (Gemma `<start_of_turn>`, Qwen/DeepSeek `<|im_start|>`, Llama-3 `<|start_header_id|>`).
     * Socket abort handling: Catches `(ConnectionResetError, ConnectionAbortedError, BrokenPipeError)`, logs at INFO, resets session with `reset_chat_session()`.
 - `core.py`: Model loader + vision chat format handler + stateful session tracker.
     * `load_local_model(model_id)`: Singleton cache, `n_ctx=get_model_context_length(model_id)`, `n_gpu_layers=0`, `n_threads=max(1, os.cpu_count()-2)`, `flash_attn=True`.
     * `get_model_context_length(model_id)`: Allocates `8192` context window for vision models (`gemma-4-e4b-it:latest`, `qwen2.5-vl-7b-instruct:latest`), `4096` for text models.
     * `_configure_chat_handler(llm, model_id)`:
-        - Gemma: `GemmaVisionChatHandler` wrapping `Llava15ChatHandler`, adapts template `{{- '<|image|>' -}}` -> `{{- item['image'] if 'image' in item else item.get('image_url', '') -}}`.
+        - Gemma: `GemmaVisionChatHandler` wrapping `Llava15ChatHandler`, adapts template `item['type'] == 'image'` -> `item['type'] in ('image', 'image_url')`, maps `{{- '<|image|>' -}}` -> `{{- item['image'] if 'image' in item else (item['image_url']['url'] if item['image_url'] is mapping else item['image_url']) -}}`.
         - Qwen-VL: `_Qwen25VisionHandler` wrapping `Qwen25VLChatHandler`, supports both `image_url` and `image` formats in `get_image_urls` and `CHAT_FORMAT` Jinja template.
     * `_chat_session`: Global session state `{"messages": [], "tokens": 0, "model_id": None}`.
     * `is_session_continuation(messages, model_id)`: Validates if request continues previous turn via `_norm_text`.

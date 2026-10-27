@@ -57,10 +57,29 @@ def test_main_js_controls_attach_btn_display():
 
 
 def test_gemma_chat_template_adaptation():
-    """Verify Gemma chat template replaces {{- '<|image|>' -}} with item image."""
+    """Verify Gemma chat template supports image and image_url types."""
     handler = core.GemmaVisionChatHandler(
         clip_model_path=os.path.join(core.MODELS_DIR, PROJECTOR_FILE),
-        chat_template="{{- '<|image|>' -}}Hello"
+        chat_template="{% elif item['type'] == 'image' %}{{- '<|image|>' -}}{% endif %}"
     )
-    assert "item['image']" in handler.handler.CHAT_FORMAT
+    fmt = handler.handler.CHAT_FORMAT
+    assert "item['type'] in ('image', 'image_url')" in fmt
+    assert "item['image']" in fmt
+    assert "image_url" in fmt
+
+
+def test_normalize_incoming_attachments_mime_and_data_url():
+    """Verify normalize_incoming_attachments accepts kind=image and MIME types."""
+    import run_ui
+    data = {
+        "attachments": [
+            {"name": "test.jpg", "type": "image/jpeg", "kind": "image", "dataUrl": "data:image/jpeg;base64,abc"},
+            {"name": "notes.txt", "type": "file", "content": "hello"}
+        ]
+    }
+    normalized = run_ui.normalize_incoming_attachments(data)
+    assert len(normalized) == 2
+    assert normalized[0]["kind"] == "image"
+    assert normalized[0]["dataUrl"] == "data:image/jpeg;base64,abc"
+
 

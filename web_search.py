@@ -29,9 +29,10 @@ WEATHER_PATTERN = re.compile(
 # Temporal / current-event keywords for Auto mode
 AUTO_TRIGGER_PATTERN = re.compile(
     r"\b(202[4-9]|today|yesterday|tomorrow|current|currently|now|latest|recent|recently|"
-    r"news|weather|stock|price|prices|pricing|cost|costs|how\s+much|who\s+is|what\s+is\s+the\s+price|"
-    r"release\s+date|when\s+will|changelog|research|search|look(?:\s+it)?\s+up|google|find\s+out|check\s+online|"
-    r"specs|specifications|buy|where\s+to\s+buy)\b",
+    r"this\s+(?:year|month|week)|news|weather|stock|price|prices|pricing|cost|costs|how\s+much|who\s+is|"
+    r"what\s+is\s+the\s+price|release\s+date|released?|releasing|launch(?:ed|ing)?|platforms?|announced?|announcement|"
+    r"when\s+(?:will|does|is)|where\s+will|come\s+out|coming\s+out|changelog|research|search|look(?:\s+it)?\s+up|"
+    r"google|find\s+out|check\s+online|specs|specifications|buy|where\s+to\s+buy)\b",
     re.IGNORECASE,
 )
 

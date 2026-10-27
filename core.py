@@ -88,8 +88,10 @@ class GemmaVisionChatHandler:
 
             @staticmethod
             def _adapt_chat_template(chat_template):
-                res = chat_template.replace("{{- '<|image|>' -}}", "{{- item['image'] if 'image' in item else item.get('image_url', '') -}}")
-                return res.replace("{{- '\n\n<|image|>\n\n' -}}", "{{- item['image'] if 'image' in item else item.get('image_url', '') -}}")
+                res = chat_template.replace("item['type'] == 'image'", "item['type'] in ('image', 'image_url')")
+                img_expr = "{{- item['image'] if 'image' in item else (item['image_url']['url'] if item['image_url'] is mapping else item['image_url']) -}}"
+                res = res.replace("{{- '<|image|>' -}}", img_expr)
+                return res.replace("{{- '\n\n<|image|>\n\n' -}}", img_expr)
 
             @staticmethod
             def get_image_urls(*args):

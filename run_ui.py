@@ -26,7 +26,7 @@ def normalize_incoming_attachments(data):
         raw = [data['attachment']]
     if not raw or not isinstance(raw, list):
         return []
-    images = [a for a in raw if isinstance(a, dict) and a.get('type') == 'image']
+    images = [a for a in raw if isinstance(a, dict) and (a.get('type') == 'image' or a.get('kind') == 'image' or str(a.get('type', '')).startswith('image/'))]
     files = [a for a in raw if isinstance(a, dict) and a.get('type') == 'file']
     return images[:3] + files
 
@@ -164,7 +164,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             content_items = []
             for img_att in img_attachments:
                 mime_type = img_att.get('mimeType') or 'image/png'
-                data_url = f"data:{mime_type};base64,{img_att.get('data', '')}"
+                data_url = img_att.get('dataUrl') or f"data:{mime_type};base64,{img_att.get('data', '')}"
                 content_items.append({"type": "image_url", "image_url": {"url": data_url}, "image": data_url})
             content_items.append({"type": "text", "text": prompt_text})
             msg[-1]['content'] = content_items

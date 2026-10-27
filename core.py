@@ -28,7 +28,8 @@ MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Mode
 MODELS_MAPPING = {
     "llama-3.2-3b-instruct-uncensored:latest": "Llama-3.2-3B-Instruct-uncensored-Q4_K_M.gguf",
     "deepseek-r1-distill-qwen-7b-uncensored:latest": "DeepSeek-R1-Distill-Qwen-7B-Uncensored.Q4_K_M.gguf",
-    "gemma-4-e4b-it:latest": "google_gemma-4-E4B-it-Q6_K.gguf"
+    "gemma-4-e4b-it:latest": "google_gemma-4-E4B-it-Q6_K.gguf",
+    "qwen2.5-vl-7b-instruct:latest": "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
 }
 
 def get_chat_format(model_id):
@@ -43,7 +44,8 @@ ASSISTANT_MAPPING = {
     "gemma-4-e4b-it:latest": "gemma-4-E4B-it-assistant.Q8_0.gguf"
 }
 VISION_PROJECTOR_MAPPING = {
-    "gemma-4-e4b-it:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf"
+    "gemma-4-e4b-it:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf",
+    "qwen2.5-vl-7b-instruct:latest": "mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf"
 }
 
 llm_instance = None
@@ -51,6 +53,29 @@ current_model_path = None
 
 
 class GemmaVisionChatHandler:
+    @staticmethod
+    def get_image_urls(*args):
+        messages = args[-1] if args else []
+        image_urls = []
+        for message in messages:
+            if not isinstance(message, dict) or message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if not isinstance(content, list):
+                continue
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("type") == "image":
+                    if isinstance(item.get("image"), str):
+                        image_urls.append(item["image"])
+                elif item.get("type") == "image_url":
+                    if isinstance(item.get("image_url"), dict) and "url" in item["image_url"]:
+                        image_urls.append(item["image_url"]["url"])
+                    elif isinstance(item.get("image_url"), str):
+                        image_urls.append(item["image_url"])
+        return image_urls
+
     def __init__(self, clip_model_path, chat_template, verbose=False):
         from llama_cpp.llama_chat_format import Llava15ChatHandler
 
@@ -67,26 +92,8 @@ class GemmaVisionChatHandler:
                 return res.replace("{{- '\n\n<|image|>\n\n' -}}", "{{- item['image'] if 'image' in item else item.get('image_url', '') -}}")
 
             @staticmethod
-            def get_image_urls(messages):
-                image_urls = []
-                for message in messages:
-                    if message.get("role") != "user":
-                        continue
-                    content = message.get("content")
-                    if not isinstance(content, list):
-                        continue
-                    for item in content:
-                        if not isinstance(item, dict):
-                            continue
-                        if item.get("type") == "image":
-                            if isinstance(item.get("image"), str):
-                                image_urls.append(item["image"])
-                        elif item.get("type") == "image_url":
-                            if isinstance(item.get("image_url"), dict) and "url" in item["image_url"]:
-                                image_urls.append(item["image_url"]["url"])
-                            elif isinstance(item.get("image_url"), str):
-                                image_urls.append(item["image_url"])
-                return image_urls
+            def get_image_urls(*args):
+                return GemmaVisionChatHandler.get_image_urls(*args)
 
         self.handler = _GemmaVisionHandler(
             clip_model_path=clip_model_path,
@@ -118,6 +125,31 @@ def _configure_chat_handler(llm, model_id):
         llm.chat_handler = None
         return llm
 
+    if "qwen" in model_id.lower() and "vl" in model_id.lower():
+        from llama_cpp.llama_chat_format import Qwen25VLChatHandler
+
+        class _Qwen25VisionHandler(Qwen25VLChatHandler):
+            @staticmethod
+            def get_image_urls(*args):
+                return GemmaVisionChatHandler.get_image_urls(*args)
+
+        handler = _Qwen25VisionHandler(clip_model_path=projector_path, verbose=False)
+        handler.CHAT_FORMAT = (
+            "{% for message in messages %}"
+            "{% if loop.first and message['role'] != 'system' %}"
+            "<|im_start|>system\n{{ self.DEFAULT_SYSTEM_MESSAGE }}<|im_end|>\n{% endif %}"
+            "<|im_start|>{{ message['role'] }}\n"
+            "{% if message['content'] is string %}{{ message['content'] }}<|im_end|>\n"
+            "{% else %}{% for content in message['content'] %}"
+            "{% if content['type'] in ('image_url', 'image') %}"
+            "{{ content.image_url if content.image_url is string else (content.image_url.url if content.image_url is mapping else content.image) }}"
+            "{% elif content['type'] == 'text' %}{{ content['text'] }}{% endif %}"
+            "{% endfor %}<|im_end|>\n{% endif %}{% endfor %}<|im_start|>assistant\n"
+        )
+        llm.chat_handler = handler
+        llm.chat_format = None
+        return llm
+
     llm.chat_handler = GemmaVisionChatHandler(
         clip_model_path=projector_path,
         chat_template=chat_template,
@@ -125,6 +157,12 @@ def _configure_chat_handler(llm, model_id):
     ).handler
     llm.chat_format = None
     return llm
+
+def get_model_context_length(model_id):
+    """Allocate 8192 context window for vision-enabled models, 4096 for text-only."""
+    if model_id in VISION_PROJECTOR_MAPPING:
+        return 8192
+    return 4096
 
 def load_local_model(model_id):
     global llm_instance, current_model_path
@@ -143,12 +181,13 @@ def load_local_model(model_id):
         gc.collect()
     
     chat_fmt = get_chat_format(model_id)
+    n_ctx = get_model_context_length(model_id)
     n_threads = max(1, os.cpu_count() - 2)
-    logger.info(f"Initializing Llama engine: format={chat_fmt}, threads={n_threads}")
+    logger.info(f"Initializing Llama engine: format={chat_fmt}, threads={n_threads}, n_ctx={n_ctx}")
     llm_instance = Llama(
         model_path=model_path, 
         n_gpu_layers=0, 
-        n_ctx=4096, 
+        n_ctx=n_ctx, 
         n_threads=n_threads, 
         verbose=False, 
         chat_format=chat_fmt,
@@ -209,13 +248,18 @@ def is_session_continuation(messages, model_id=None):
         return False
     
     def _norm_text(c):
+        text = ""
         if isinstance(c, str):
-            return c.strip()
-        if isinstance(c, list):
+            text = c
+        elif isinstance(c, list):
             for item in c:
                 if isinstance(item, dict) and item.get("type") == "text":
-                    return item.get("text", "").strip()
-        return ""
+                    text = item.get("text", "")
+                    break
+        # Strip server-injected web search context for stable continuation comparison
+        text = text.split("\n\n---\nWeb Search Results:")[0]
+        text = text.split("\n\n[Web Search Results]")[0]
+        return text.strip()
 
     for p_msg, m_msg in zip(prior, messages[:-1]):
         if p_msg.get("role") != m_msg.get("role"):

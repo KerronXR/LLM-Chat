@@ -70,7 +70,11 @@ def should_trigger_search(query_text: str, mode: str = "auto") -> bool:
     return False
 
 
-from search_context import resolve_contextual_query, should_trigger_search_from_history
+from search_context import (
+    resolve_contextual_query,
+    should_trigger_search_from_history,
+    extract_subject_from_history,
+)
 
 
 def clean_search_query(text: str) -> str:

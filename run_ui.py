@@ -20,6 +20,25 @@ if os.path.exists(SESSIONS_FILE):
 for d in [IMAGES_DIR, MODELS_DIR]:
     if not os.path.exists(d): os.makedirs(d)
 
+def normalize_incoming_attachments(data):
+    raw = data.get('attachments')
+    if raw is None and data.get('attachment'):
+        raw = [data['attachment']]
+    if not raw or not isinstance(raw, list):
+        return []
+    images = [a for a in raw if isinstance(a, dict) and a.get('type') == 'image']
+    files = [a for a in raw if isinstance(a, dict) and a.get('type') == 'file']
+    return images[:3] + files
+
+
+def build_continuation_turn(model_id, user_text):
+    mid = (model_id or "").lower()
+    if "qwen" in mid or "deepseek" in mid:
+        return f"<|im_start|>user\n{user_text}<|im_end|>\n<|im_start|>assistant\n", ["<|im_end|>", "<|endoftext|>"]
+    if "llama-3" in mid or "llama3" in mid:
+        return f"<|start_header_id|>user<|end_header_id|>\n\n{user_text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", ["<|eot_id|>", "<|end_of_text|>"]
+    return f"<start_of_turn>user\n{user_text}<end_of_turn>\n<start_of_turn>model\n", ["<end_of_turn>", "<eos>"]
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     disable_nagle_algorithm = True
@@ -98,7 +117,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(line.encode('utf-8'))
             self.wfile.flush()
         msg = data.get('messages', [])
-        attachment = data.get('attachment')
+        attachments = normalize_incoming_attachments(data)
         has_history_images = any(
             isinstance(m.get('content'), list) and any(
                 isinstance(item, dict) and item.get('type') in ('image', 'image_url')
@@ -106,7 +125,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             )
             for m in msg if isinstance(m, dict)
         )
-        vision_requested = bool(attachment and attachment.get('type') == 'image') or has_history_images
+        vision_requested = any(a.get('type') == 'image' for a in attachments) or has_history_images
         if vision_requested and not model_supports_vision(mid):
             chunk({
                 "model": mid,
@@ -121,38 +140,37 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             })
             return
 
-        if attachment:
-            if attachment['type'] == 'file':
-                # Append context for text/doc files
-                ctx_msg = f"\n\n[Attached File: {attachment['name']}]\n{attachment['content']}"
-                if msg:
-                    if isinstance(msg[-1].get('content'), list):
-                        msg[-1]['content'].append({"type": "text", "text": ctx_msg})
-                    else:
-                        msg[-1]['content'] += ctx_msg
-            elif attachment['type'] == 'image':
-                if msg:
-                    curr_content = msg[-1].get('content')
-                    if isinstance(curr_content, list):
-                        prompt_text = "Please describe this image."
-                        for item in curr_content:
-                            if isinstance(item, dict) and item.get('type') == 'text':
-                                prompt_text = item.get('text', '')
-                                break
-                    else:
-                        prompt_text = curr_content or "Please describe this image."
-                        if curr_content and re.search(r"\b(price|cost|how\s+much|buy|where|what\s+is)\b", curr_content, re.I):
-                            prompt_text = f"Identify the specific product or item shown, then answer: {curr_content}"
-                    mime_type = attachment.get('mimeType') or 'image/png'
-                    data_url = f"data:{mime_type};base64,{attachment['data']}"
-                    logger.info("Vision attachment received: mime=%s bytes=%s", mime_type, len(attachment.get('data', '')))
-                    msg[-1]['content'] = [
-                        {"type": "image", "image": data_url},
-                        {"type": "text", "text": prompt_text}
-                    ]
+        for att in attachments:
+            if att.get('type') == 'file' and msg:
+                ctx_msg = f"\n\n[Attached File: {att.get('name')}]\n{att.get('content')}"
+                if isinstance(msg[-1].get('content'), list):
+                    msg[-1]['content'].append({"type": "text", "text": ctx_msg})
+                else:
+                    msg[-1]['content'] = f"{msg[-1].get('content', '')}{ctx_msg}"
+
+        img_attachments = [a for a in attachments if a.get('type') == 'image']
+        if img_attachments and msg:
+            curr_content = msg[-1].get('content')
+            prompt_text = "Please describe the attached images."
+            if isinstance(curr_content, list):
+                for item in curr_content:
+                    if isinstance(item, dict) and item.get('type') == 'text':
+                        prompt_text = item.get('text', '')
+                        break
+            elif isinstance(curr_content, str) and curr_content:
+                prompt_text = curr_content
+                if re.search(r"\b(price|cost|how\s+much|buy|where|what\s+is)\b", curr_content, re.I):
+                    prompt_text = f"Identify the specific product or item shown, then answer: {curr_content}"
+            content_items = []
+            for img_att in img_attachments:
+                mime_type = img_att.get('mimeType') or 'image/png'
+                data_url = f"data:{mime_type};base64,{img_att.get('data', '')}"
+                content_items.append({"type": "image_url", "image_url": {"url": data_url}, "image": data_url})
+            content_items.append({"type": "text", "text": prompt_text})
+            msg[-1]['content'] = content_items
 
         web_search_mode = data.get('web_search', 'auto')
-        if not attachment and msg:
+        if not attachments and msg:
             from web_search import (
                 should_trigger_search_from_history,
                 resolve_contextual_query,
@@ -172,39 +190,34 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         msg[-1]['content'] = f"{msg[-1].get('content', '')}\n\n{s_ctx}"
         
         def extract_text_for_count(messages_list):
-            texts = []
-            for m in messages_list:
-                if not isinstance(m, dict): continue
-                c = m.get('content', '')
-                if isinstance(c, str):
-                    texts.append(c)
-                elif isinstance(c, list):
-                    for item in c:
-                        if isinstance(item, dict) and item.get('type') == 'text':
-                            texts.append(item.get('text', ''))
-            return " ".join(texts)
+            return " ".join(
+                m.get('content', '') if isinstance(m.get('content'), str)
+                else " ".join(i.get('text', '') for i in m.get('content', []) if isinstance(i, dict) and i.get('type') == 'text')
+                for m in messages_list if isinstance(m, dict)
+            )
 
         prompt_for_count = extract_text_for_count(msg).encode()
         ec, pc = 0, len(llm.tokenize(prompt_for_count))
         try:
             gen_start = None
             assistant_reply = []
-            if not attachment and is_session_continuation(msg, mid):
+            if not attachments and is_session_continuation(msg, mid):
                 logger.info("Fast follow-up turn: reusing active KV cache without image re-encode")
                 user_text = msg[-1].get('content', '')
                 if isinstance(user_text, list):
                     user_text = " ".join(item.get('text', '') for item in user_text if isinstance(item, dict) and item.get('type') == 'text')
-                turn_prompt = f"<turn|>\n<|turn>user\n{user_text}<turn|>\n<|turn>model\n"
+                turn_prompt, stop_tokens = build_continuation_turn(mid, user_text)
                 new_tokens = llm.tokenize(turn_prompt.encode('utf-8'), add_bos=False)
                 llm.eval(new_tokens)
                 pc = len(new_tokens)
                 prompt_ids = llm.input_ids[:llm.n_tokens].tolist()
                 max_gen = min(2048, max(1, 4096 - llm.n_tokens - 1))
-                for out in llm.create_completion(prompt=prompt_ids, stream=True, max_tokens=max_gen):
+                for out in llm.create_completion(prompt=prompt_ids, stream=True, max_tokens=max_gen, stop=stop_tokens):
                     tok = out["choices"][0].get("text", "")
                     if tok:
-                        if "<turn|>" in tok:
-                            clean = tok.split("<turn|>")[0]
+                        if any(s in tok for s in stop_tokens):
+                            clean = tok
+                            for s in stop_tokens: clean = clean.split(s)[0]
                             if clean:
                                 ec += 1
                                 assistant_reply.append(clean)
@@ -234,6 +247,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             gen_elapsed = time.perf_counter() - gen_start if gen_start else 0
             avg_tps = round(ec / gen_elapsed, 2) if gen_elapsed > 0 else 0
             chunk({"model": mid, "message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192, "avg_tps": avg_tps})
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError) as e:
+            logger.info("Client aborted connection during generation: %s", e)
+            reset_chat_session()
         except Exception as e:
             logger.error("Chat generation failed for %s: %s", mid, e, exc_info=True)
             try:

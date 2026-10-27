@@ -26,32 +26,15 @@ export function setWebSearchMode(mode) {
     DOM.webSearchBtn.title = titles[mode] || 'Web Search';
 }
 
-export function renderSourcesBadge(aiMsgDiv, sources) {
-    if (!sources || !sources.length) return;
+export function renderSourcesBadge(aiMsgDiv, sources, count) {
+    const total = count || (sources ? sources.length : 0);
+    if (!total) return;
     let container = aiMsgDiv.querySelector('.search-sources-container');
     if (!container) {
         container = document.createElement('div');
         container.className = 'search-sources-container';
-        const title = document.createElement('div');
-        title.className = 'search-sources-title';
-        title.innerHTML = '<span>🌐 Sources:</span>';
-        container.appendChild(title);
-        const list = document.createElement('div');
-        list.className = 'search-sources-list';
-        container.appendChild(list);
         aiMsgDiv.appendChild(container);
     }
-    const list = container.querySelector('.search-sources-list');
-    list.innerHTML = '';
-    sources.forEach((s, idx) => {
-        const a = document.createElement('a');
-        a.className = 'search-source-chip';
-        a.href = s.url;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.title = s.title;
-        let label = s.title.length > 25 ? s.title.substring(0, 25) + '...' : s.title;
-        a.textContent = `[${idx + 1}] ${label}`;
-        list.appendChild(a);
-    });
+    container.innerHTML = `<span class="search-sources-summary">🌐 ${total} search results</span>`;
 }
+

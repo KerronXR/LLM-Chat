@@ -117,3 +117,75 @@ def test_resolve_contextual_query_for_research_directive():
     assert "research" not in resolved.lower()
     assert "price" in resolved.lower() or "msrp" in resolved.lower()
 
+
+def test_is_valid_product_candidate_accepts_step_into_reading_and_rejects_meta():
+    from search_context import is_valid_product_candidate
+    assert is_valid_product_candidate("3 Step Into Reading Mario Kart") is True
+    assert is_valid_product_candidate("Step Into Reading Mario Kart") is True
+    assert is_valid_product_candidate("8BitDo NiteStick 8-Key Programmable Macro Pad") is True
+
+    # Meta fluff and transitional phrases must be rejected
+    assert is_valid_product_candidate("typical listings") is False
+    assert is_valid_product_candidate("Therefore I") is False
+    assert is_valid_product_candidate("Whether it is new or used") is False
+    assert is_valid_product_candidate("Amazon,") is False
+    assert is_valid_product_candidate("Target,") is False
+    assert is_valid_product_candidate("general search") is False
+    assert is_valid_product_candidate("current retailer") is False
+
+
+def test_multi_turn_history_resolution_mario_kart_chat():
+    from search_context import extract_subject_from_history, resolve_contextual_query
+    # Exact turns from user chat
+    messages = [
+        {"role": "user", "content": "What is the price"},
+        {
+            "role": "assistant",
+            "content": 'I am sorry, but the image you provided is of a book cover ("3 Step Into Reading Mario Kart") and does not contain any pricing information. Therefore, I cannot tell you the price.'
+        },
+        {"role": "user", "content": "Well go fetch a price"},
+        {
+            "role": "assistant",
+            "content": (
+                'I still do not have the current selling price for the "3 Step Into Reading Mario Kart" book. '
+                'Pricing can vary greatly depending on:\n* **Where you buy it**\n* **Whether it is new or used**\n'
+                'To find the exact price, I recommend checking major online retailers like Amazon.'
+            )
+        },
+        {"role": "user", "content": "Well you had it last time try better"},
+        {
+            "role": "assistant",
+            "content": (
+                'I apologize... As an AI, I do not have real-time access... '
+                'If you tell me **where** you are planning to buy it (e.g., "Amazon," "Target," or a specific country), '
+                'I can try to perform a general search for typical listings...'
+            )
+        },
+        {"role": "user", "content": "Doesn't matter just fetch some price from internet"}
+    ]
+
+    # Check Turn 1
+    t1_subj = extract_subject_from_history(messages[:3])
+    assert "Mario Kart" in t1_subj
+    assert "Therefore" not in t1_subj
+
+    # Check Turn 2
+    t2_subj = extract_subject_from_history(messages[:5])
+    assert "Mario Kart" in t2_subj
+    assert "Whether" not in t2_subj
+
+    # Check Turn 3
+    t3_subj = extract_subject_from_history(messages[:7])
+    assert "Mario Kart" in t3_subj
+    assert "typical listings" not in t3_subj
+    assert "Amazon" not in t3_subj
+
+    # Check final resolved query
+    final_query = resolve_contextual_query(messages)
+    assert "Mario Kart" in final_query
+    assert "typical listings" not in final_query
+    assert "Therefore" not in final_query
+    assert "Whether" not in final_query
+    assert "Amazon" not in final_query
+
+

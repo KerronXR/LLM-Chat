@@ -12,6 +12,8 @@ from web_search import (
     format_search_prompt_context,
     fetch_live_stock,
     extract_stock_ticker,
+    extract_subject_from_history,
+    resolve_contextual_query,
 )
 
 
@@ -190,5 +192,58 @@ def test_safe_duckduckgo_search_includes_live_stock():
     assert len(results) == 1
     assert "AMZN" in results[0]["title"]
     assert "$249.09" in results[0]["snippet"]
+
+
+def test_extract_subject_from_history_ignores_structural_bolds_and_finds_quotes():
+    messages = [
+        {"role": "user", "content": "What is the cost of those"},
+        {"role": "assistant", "content": 'The images show a book titled "3. Step Into Reading Mario Kart" and a mechanical keyboard.'},
+        {"role": "user", "content": "You can search for prices"},
+        {"role": "assistant", "content": 'Searching on Google for: "8BitDo NiteStick 8-Key Programmable Macro Pad" to see current listings.'},
+        {"role": "user", "content": "Well go"},
+        {"role": "user", "content": "What you thinking about?"},
+        {
+            "role": "assistant",
+            "content": (
+                "As an AI, I don't 'think'...\n"
+                "1. **Understanding your intent:** You asked me to 'go'.\n"
+                "2. **Addressing the limitation:** I am aware that I cannot browse.\n"
+                "3. **Providing the best next step:** Guide you on how to find the price.\n"
+                "**In short:** I am processing the request."
+            )
+        },
+        {"role": "user", "content": "Fetch the prices calculate the cost"}
+    ]
+    subject = extract_subject_from_history(messages)
+    assert "intent" not in subject.lower()
+    assert "limitation" not in subject.lower()
+    assert "8BitDo NiteStick 8-Key Programmable Macro Pad" in subject or "Mario Kart" in subject
+
+
+def test_resolve_contextual_query_with_turn7_chat_history():
+    messages = [
+        {"role": "user", "content": "What is the cost of those"},
+        {"role": "assistant", "content": 'The images show a book titled "3. Step Into Reading Mario Kart" and a mechanical keyboard.'},
+        {"role": "user", "content": "You can search for prices"},
+        {"role": "assistant", "content": 'Searching on Google for: "8BitDo NiteStick 8-Key Programmable Macro Pad" to see current listings.'},
+        {"role": "user", "content": "Well go"},
+        {"role": "user", "content": "What you thinking about?"},
+        {
+            "role": "assistant",
+            "content": (
+                "As an AI, I don't 'think'...\n"
+                "1. **Understanding your intent:** You asked me to 'go'.\n"
+                "2. **Addressing the limitation:** I am aware that I cannot browse.\n"
+                "3. **Providing the best next step:** Guide you on how to find the price.\n"
+                "**In short:** I am processing the request."
+            )
+        },
+        {"role": "user", "content": "Fetch the prices calculate the cost"}
+    ]
+    resolved = resolve_contextual_query(messages)
+    assert "intent" not in resolved.lower()
+    assert "8BitDo NiteStick 8-Key Programmable Macro Pad" in resolved or "Mario Kart" in resolved
+    assert "price" in resolved.lower() or "cost" in resolved.lower() or "msrp" in resolved.lower()
+
 
 

@@ -70,7 +70,12 @@ function renderMessageContent(container, content) {
         container.appendChild(textBlock);
     }
 
-    if (normalized.attachment) {
+    if (normalized.attachments && Array.isArray(normalized.attachments) && normalized.attachments.length > 0) {
+        const grid = document.createElement('div');
+        grid.className = 'message-attachments-grid';
+        normalized.attachments.forEach(att => grid.appendChild(buildAttachmentNode(att)));
+        container.appendChild(grid);
+    } else if (normalized.attachment) {
         container.appendChild(buildAttachmentNode(normalized.attachment));
     }
 }
@@ -100,9 +105,9 @@ function buildAttachmentNode(attachment) {
 
 export function setGenerating(generating = true) {
     state.isGenerating = generating;
-    DOM.sendBtn.disabled = generating;
+    // Keep send button active so user can interrupt generation anytime
+    DOM.sendBtn.disabled = false;
     DOM.stopBtn.textContent = generating ? 'Stop' : 'New';
-    // Ensure stop button is never disabled as it now doubles as 'New'
     DOM.stopBtn.disabled = false;
     showProgress(generating);
     if (!generating) DOM.userInput.focus();

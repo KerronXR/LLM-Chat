@@ -30,6 +30,7 @@
                 <label for="model-select">Active Model</label>
                 <select id="model-select">
                     <option value="gemma-4-e4b-it:latest" selected>Gemma-4 E4B (Official Turbo + Vision)</option>
+                    <option value="qwen2.5-vl-7b-instruct:latest">Qwen2.5-VL 7B (Smart Vision + OCR)</option>
                     <option value="llama-3.2-3b-instruct-uncensored:latest">Llama-3.2 3B (Fast Uncensored Direct)</option>
                     <option value="deepseek-r1-distill-qwen-7b-uncensored:latest">DeepSeek-R1 7B (Deep Uncensored Thinking)</option>
                 </select>
@@ -65,7 +66,7 @@
             </div>
 
             <div class="chat-input-area">
-                <input type="file" id="chat-attachment" accept="image/*,text/*,.pdf,.md" style="display: none;">
+                <input type="file" id="chat-attachment" accept="image/*,text/*,.pdf,.md" multiple style="display: none;">
                 <button id="attach-btn" class="attach-btn" title="Attach file (Images, PDF, Text, MD)">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                 </button>

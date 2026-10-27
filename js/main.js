@@ -1,9 +1,12 @@
 import { state, DOM, updateContextUI } from './state.js';
 import { handleSend, handleStopOrNew, handleClearChat, handleExport, handleFileChange, clearAttachment, ensureJpegDataUrl } from './handlers.js';
+import { initClipboardPasteHandler } from './attachments.js';
 import { handleToggleWebSearch } from './search.js';
 import { setGenerating, toggleSidebar, appendMessage } from './ui.js';
 
 import { savePersona, getHistory, getPersona, logout } from './api.js';
+
+initClipboardPasteHandler();
 
 // Init
 // Add mobile toggle elements to DOM
@@ -94,9 +97,10 @@ function updateSystemPrompt(model) {
 }
 
 function updateModelCapabilities(model) {
-    const supportsVision = model.includes('gemma');
+    const lower = (model || '').toLowerCase();
+    const supportsVision = lower.includes('gemma') || lower.includes('-vl') || lower.includes('vl-') || lower.includes('vision');
     DOM.attachBtn.style.display = supportsVision ? 'flex' : 'none';
-    if (!supportsVision && state.attachedFile) {
+    if (!supportsVision && (state.attachedFile || (state.attachedFiles && state.attachedFiles.length > 0))) {
         clearAttachment();
     }
 }

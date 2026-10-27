@@ -48,8 +48,40 @@
 
 #attachment-preview img {
     height: 40px;
+    width: 40px;
+    object-fit: cover;
     border-radius: 6px;
     border: 1px solid var(--border-subtle);
+}
+
+.preview-item {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.preview-item .remove-preview-btn {
+    cursor: pointer;
+    margin-left: 4px;
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--text-muted);
+    transition: color 0.15s;
+}
+
+.preview-item .remove-preview-btn:hover {
+    color: #ff4b2b;
+}
+
+.message-attachments-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.message-attachments-grid .message-attachment {
+    margin: 0;
 }
 
 .file-chip {

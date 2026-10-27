@@ -68,7 +68,9 @@ def clean_search_query(text: str) -> str:
 
 
 IGNORE_WORDS = re.compile(
-    r"^(?:this|that|what|when|where|which|who|how|is|are|was|were|the|a|an|based|here|there|i|you|we|they|welcome|please)\b",
+    r"^(?:this|that|what|when|where|which|who|how|is|are|was|were|the|a|an|based|here|there|i|you|we|they|welcome|please|"
+    r"therefore|however|because|since|although|instead|moreover|furthermore|as|if|when|to|in)\b|"
+    r"^(?:price|cost|prices|buy|search|check|look|find|item|product|screenshot|image|photo|store|retailer|amazon|target|ebay|walmart|google|country)$",
     re.IGNORECASE,
 )
 
@@ -90,8 +92,32 @@ def extract_named_entities(text: str) -> list[str]:
     return entities
 
 
+STRUCTURAL_BOLD_IGNORE = re.compile(
+    r"(?:understanding\s+your\s+intent|addressing\s+the\s+limitation|providing\s+the\s+best\s+next\s+step|"
+    r"in\s+short|next\s+steps?|best\s+next\s+step|key\s+takeaways?|for\s+example|note\s+that|"
+    r"typical\s+listings?|general\s+search|current\s+retailer|various\s+retailers|online\s+stores?|"
+    r"current\s+price|selling\s+price|exact\s+price|where\s+you\s+buy\s+it|whether\s+it\s+is\s+new\s+or\s+used|"
+    r"any\s+ongoing\s+sales|local\s+bookstore|major\s+online\s+retailers?)"
+    r"|:\s*$",
+    re.IGNORECASE,
+)
+
+
+def is_valid_product_candidate(text: str) -> bool:
+    """Validate whether candidate string represents a real product, title, or named entity."""
+    t = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", text).strip()
+    if len(t) < 4 or len(t) > 60:
+        return False
+    if DATE_MONTH_IGNORE.match(t) or IGNORE_WORDS.match(t) or REFUSAL_BOILERPLATE.search(t) or STRUCTURAL_BOLD_IGNORE.search(t):
+        return False
+    if " " not in t and (t.islower() or t.lower() in ("think", "search", "browse", "price", "prices", "cost")):
+        return False
+    return True
+
+
 def extract_subject_from_history(messages: list[dict]) -> str:
     """Extract primary named entity or topic from recent conversation turns, filtering boilerplate."""
+    # Pass 1: High confidence (search targets, product patterns, quoted titles)
     for m in reversed(messages[:-1]):
         content = m.get("content", "")
         if isinstance(content, list):
@@ -101,44 +127,48 @@ def extract_subject_from_history(messages: list[dict]) -> str:
         if not content:
             continue
 
-        prod_m = PRODUCT_IDENTIFY_PATTERN.search(content)
-        if prod_m:
-            prod_candidate = prod_m.group(1).strip()
-            if len(prod_candidate) > 3 and not REFUSAL_BOILERPLATE.search(prod_candidate):
-                return prod_candidate
-
         search_m = re.search(
             r"(?:search\s+for|checking\s+price\s+for|looking\s+up)\s+[\'\"]?([a-zA-Z0-9\s]+?)(?:price|[\'\"]|\.|\,|$)",
             content,
             re.I,
         )
         if search_m:
-            subj = search_m.group(1).strip()
-            if len(subj) > 3 and not DATE_MONTH_IGNORE.match(subj) and not REFUSAL_BOILERPLATE.search(subj):
+            subj = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", search_m.group(1)).strip()
+            if is_valid_product_candidate(subj):
                 return subj
+
+        prod_m = PRODUCT_IDENTIFY_PATTERN.search(content)
+        if prod_m:
+            prod_candidate = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", prod_m.group(1)).strip()
+            if is_valid_product_candidate(prod_candidate):
+                return prod_candidate
+
+        quotes = re.findall(r'["\']([^"\']{4,60})["\']', content)
+        for q in quotes:
+            clean_q = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", q).strip()
+            if is_valid_product_candidate(clean_q):
+                return clean_q
+
+    # Pass 2: Fallback to validated bolds and named entities
+    for m in reversed(messages[:-1]):
+        content = m.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(
+                item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text"
+            )
+        if not content:
+            continue
 
         bolds = re.findall(r"\*\*([^*]+)\*\*", content)
         if bolds:
             clean_bolds = [re.sub(r"[^a-zA-Z0-9\s]", " ", b).strip() for b in bolds]
-            clean_bolds = [
-                b for b in clean_bolds
-                if 3 < len(b) < 50
-                and not DATE_MONTH_IGNORE.match(b)
-                and not IGNORE_WORDS.match(b)
-                and not REFUSAL_BOILERPLATE.search(b)
-            ]
+            clean_bolds = [b for b in clean_bolds if is_valid_product_candidate(b)]
             if clean_bolds:
                 return clean_bolds[0]
 
         entities = extract_named_entities(content)
         if entities:
-            filtered = [
-                e for e in entities
-                if not DATE_MONTH_IGNORE.match(e)
-                and not IGNORE_WORDS.match(e)
-                and not REFUSAL_BOILERPLATE.search(e)
-                and len(e) > 2
-            ]
+            filtered = [e for e in entities if is_valid_product_candidate(e)]
             if filtered:
                 return max(filtered, key=len)
 

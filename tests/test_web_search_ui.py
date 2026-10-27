@@ -62,3 +62,16 @@ def test_web_search_button_toggle_interaction(page):
     assert badge.inner_text() == "AUTO"
     assert "web-search-auto" in search_btn.get_attribute("class")
 
+
+def test_search_sources_badge_renders_count_without_chips():
+    search_js_path = os.path.join(PROJECT_ROOT, "js", "search.js")
+    with open(search_js_path, "r", encoding="utf-8") as f:
+        code = f.read()
+
+    # Must contain search results count text
+    assert "search results" in code
+    # Must NOT build individual source chips or chip link elements
+    assert "search-source-chip" not in code
+    assert "search-sources-list" not in code
+
+

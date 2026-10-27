@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
+import core
 
 
 def test_handlers_js_clean_serialization():
@@ -60,3 +61,25 @@ def test_stateful_stream_chat_continuation():
     # Reset test
     core.reset_chat_session()
     assert core.is_session_continuation([{"role": "user", "content": "new"}]) is False
+
+
+def test_continuation_preserves_after_web_search():
+    core.reset_chat_session()
+    # Turn 1 recorded with injected search context on server
+    search_context_text = "\n\n---\nWeb Search Results:\n[1] 8BitDo Pad: $24.99"
+    core.record_session_turn(
+        messages=[{"role": "user", "content": f"You can search for prices{search_context_text}"}],
+        assistant_content="I found the price is $24.99",
+        tokens_count=120,
+        model_id="gemma-4-e4b-it:latest"
+    )
+
+    # Turn 2 incoming from browser (browser does not have injected search context)
+    incoming_messages = [
+        {"role": "user", "content": "You can search for prices"},
+        {"role": "assistant", "content": "I found the price is $24.99"},
+        {"role": "user", "content": "Well go"}
+    ]
+
+    assert core.is_session_continuation(incoming_messages, "gemma-4-e4b-it:latest") is True
+

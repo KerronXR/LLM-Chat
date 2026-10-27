@@ -30,6 +30,13 @@ def test_model_supports_vision_gemma():
     assert core.model_supports_vision(LLAMA_ID) is False
 
 
+def test_model_supports_vision_qwen_vl(monkeypatch):
+    """Verify model_supports_vision returns True for Qwen2.5-VL when projector exists."""
+    assert "qwen2.5-vl-7b-instruct:latest" in core.VISION_PROJECTOR_MAPPING
+    monkeypatch.setattr(os.path, "exists", lambda p: True)
+    assert core.model_supports_vision("qwen2.5-vl-7b-instruct:latest") is True
+
+
 def test_index_html_default_selected_is_gemma():
     """Verify index.html selects Gemma by default."""
     html_path = os.path.join(PROJECT_ROOT, "index.html")

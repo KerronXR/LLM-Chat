@@ -9,7 +9,14 @@ export const state = {
     contextSize: 0,
     maxContext: 8192,
     activeModel: "gemma-4-e4b-it:latest",
-    attachedFile: null,
+    attachedFiles: [],
+    get attachedFile() {
+        return this.attachedFiles && this.attachedFiles.length > 0 ? this.attachedFiles[0] : null;
+    },
+    set attachedFile(file) {
+        if (!file) this.attachedFiles = [];
+        else this.attachedFiles = [file];
+    },
     webSearchMode: "auto"
 };
 

@@ -44,9 +44,17 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 with Vision + Mult
     * `should_trigger_search_from_history(messages, mode)`: Detects auto search intent across conversation turns.
     * `extract_subject_from_history(messages)`: Extracts named product entities from markdown bolds, capitalized tokens, and search intents.
 - `setup_local_llm.py`: Dependency verification + downloads.
-- `index.html`: Dark glassmorphism UI. Model selector, dynamic attach button, web search toggle button, context meter, chat thread.
-- `login.html`: Auth portal.
-- `css/`: Modular styling (`base.css`, `components.css`, `markdown.css`, `buttons.css`, `utility.css`, `mobile.css`, `login.css`). Includes `.web-search-btn`, `.web-search-badge`, `.search-sources-container`, `.search-source-chip`.
+- `index.html`: Gemini Light UI. Model selector, dynamic attach button, web search toggle button, context meter, chat thread, pill input area.
+- `login.html`: Auth portal with Gemini Light card and button styles.
+- `css/`: Modular styling (all files <= 300 LOC):
+    * `base.css`: Gemini Light palette (`--bg-canvas: #f8fafd`, `--bg-surface: #f0f4f9`, `--bg-card: #ffffff`, `--text-main: #1f1f1f`, `--accent-primary: #0b57d0`, `--accent-gemini`).
+    * `components.css`: Sidebar, chat container, user bubble (`#f0f4f9`), AI message (`#ffffff`), pill input, live TPS indicator.
+    * `media.css`: Image upload preview, grid, upscale button, attachments.
+    * `search.css`: `.web-search-btn`, `.web-search-badge`, `.search-sources-container`, `.search-source-chip`.
+    * `buttons.css`: Gemini `#0b57d0` send button, `#fce8e6` stop button, secondary/accent buttons.
+    * `utility.css`: Status bar, minimal scrollbar, Gemini gradient progress bar.
+    * `markdown.css`: Light table styling, inline code formatting, typography.
+    * `mobile.css`: `#mobile-toggle`, responsive drawer sidebar, mobile status bar.
 - `js/`: Modular frontend:
     * `state.js`: Global state management (`webSearchMode`).
     * `dom.js`: Cached DOM element references.

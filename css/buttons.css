@@ -1,80 +1,97 @@
 /* Buttons and Interactive Elements */
 #send-btn {
-    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    background: var(--accent-primary);
     border: none;
-    padding: 16px 30px;
-    border-radius: 16px;
-    color: white;
-    font-weight: 700;
+    padding: 12px 24px;
+    border-radius: var(--radius-pill);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.95rem;
     cursor: pointer;
     transition: var(--transition);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 2px 6px rgba(11, 87, 208, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
 }
 
 #send-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 15px 30px rgba(0, 210, 255, 0.3);
+    background: var(--accent-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(11, 87, 208, 0.3);
+}
+
+#send-btn:active {
+    transform: translateY(0);
 }
 
 #stop-btn {
-    background: rgba(255, 75, 43, 0.1);
-    border: 1px solid rgba(255, 75, 43, 0.3);
-    padding: 16px 20px;
-    border-radius: 16px;
-    color: #ff4b2b;
+    background: #fce8e6;
+    border: 1px solid #f8b4af;
+    padding: 12px 20px;
+    border-radius: var(--radius-pill);
+    color: #c5221f;
     font-weight: 600;
+    font-size: 0.95rem;
     cursor: pointer;
     transition: var(--transition);
+    height: 44px;
 }
 
 #stop-btn:not(:disabled):hover {
-    background: rgba(255, 75, 43, 0.2);
-    border-color: #ff4b2b;
-    box-shadow: 0 0 20px rgba(255, 75, 43, 0.2);
-    transform: translateY(-2px);
+    background: #fad2cf;
+    border-color: #d93025;
+    box-shadow: 0 2px 8px rgba(217, 48, 37, 0.2);
+    transform: translateY(-1px);
+}
+
+#stop-btn:active {
+    transform: translateY(0);
 }
 
 .secondary-btn {
-    padding: 12px;
-    border-radius: 12px;
-    border: 1px solid var(--glass-border);
-    background: rgba(255, 255, 255, 0.05);
-    color: white;
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-card);
+    color: var(--text-main);
     cursor: pointer;
-    font-weight: 600;
+    font-weight: 500;
+    font-size: 0.88rem;
     transition: var(--transition);
 }
 
 .secondary-btn:hover {
-    background: var(--glass-hover);
-    border-color: var(--accent-primary);
-    box-shadow: 0 5px 15px rgba(0, 210, 255, 0.1);
+    background: var(--bg-hover);
+    border-color: #c4c7c5;
 }
 
 .accent-btn {
-    padding: 12px;
-    border-radius: 12px;
-    border: 1px solid var(--accent-primary);
-    background: rgba(0, 210, 255, 0.1);
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    border: 1px solid rgba(11, 87, 208, 0.3);
+    background: rgba(11, 87, 208, 0.08);
     color: var(--accent-primary);
     cursor: pointer;
     font-weight: 600;
+    font-size: 0.88rem;
     transition: var(--transition);
 }
 
 .accent-btn:hover {
     background: var(--accent-primary);
-    color: var(--bg-dark);
-    box-shadow: 0 5px 15px rgba(0, 210, 255, 0.3);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(11, 87, 208, 0.25);
 }
 
 button:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
-    filter: grayscale(0.5);
-    background: rgba(255, 255, 255, 0.05);
-    border-color: var(--glass-border);
-    color: var(--text-muted);
+    filter: grayscale(0.6);
+    background: var(--bg-surface);
+    border-color: var(--border-subtle);
+    color: var(--text-subtle);
     transform: none !important;
     box-shadow: none !important;
 }

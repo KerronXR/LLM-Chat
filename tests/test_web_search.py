@@ -1,6 +1,8 @@
 import pytest
 from unittest.mock import patch, MagicMock
 import urllib.error
+import json
+
 
 from web_search import (
     should_trigger_search,
@@ -8,7 +10,10 @@ from web_search import (
     sanitize_search_result,
     safe_duckduckgo_search,
     format_search_prompt_context,
+    fetch_live_stock,
+    extract_stock_ticker,
 )
+
 
 
 def test_should_trigger_search_modes():
@@ -21,8 +26,15 @@ def test_should_trigger_search_auto_heuristics():
     assert should_trigger_search("What is the latest news in 2026?", mode="auto") is True
     assert should_trigger_search("current weather in Tokyo", mode="auto") is True
     assert should_trigger_search("release date of GTA 6", mode="auto") is True
+    assert should_trigger_search("You need to research", mode="auto") is True
+    assert should_trigger_search("Research it", mode="auto") is True
+    assert should_trigger_search("Search the web for RTX 5090", mode="auto") is True
+    assert should_trigger_search("How much that costs?", mode="auto") is True
+    assert should_trigger_search("look it up online", mode="auto") is True
+    assert should_trigger_search("google RTX 5090", mode="auto") is True
     assert should_trigger_search("write a python quicksort function", mode="auto") is False
     assert should_trigger_search("explain how transformer attention works", mode="auto") is False
+
 
 
 def test_clean_search_query():
@@ -127,4 +139,56 @@ def test_safe_duckduckgo_search_live():
         assert len(results) <= 2
         assert any("python" in r["snippet"].lower() or "python" in r["title"].lower() for r in results)
         assert all(r["url"].startswith("http") for r in results)
+
+
+def test_extract_stock_ticker():
+    assert extract_stock_ticker("How much is amzn stock") == "AMZN"
+    assert extract_stock_ticker("Apple stock price") == "AAPL"
+    assert extract_stock_ticker("TSLA stock quote") == "TSLA"
+    assert extract_stock_ticker("Nvidia share price today") == "NVDA"
+    assert extract_stock_ticker("tell me about python asyncio") is None
+
+
+def test_fetch_live_stock_mock():
+    mock_payload = json.dumps({
+        "chart": {
+            "result": [{
+                "meta": {
+                    "currency": "USD",
+                    "symbol": "AMZN",
+                    "regularMarketPrice": 249.09,
+                    "regularMarketDayHigh": 250.79,
+                    "regularMarketDayLow": 247.24,
+                }
+            }]
+        }
+    }).encode("utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.read.return_value = mock_payload
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        res = fetch_live_stock("AMZN")
+
+    assert res is not None
+    assert "Live Stock: AMZN" in res["title"]
+    assert "249.09" in res["snippet"]
+    assert "https://finance.yahoo.com/quote/AMZN" in res["url"]
+
+
+def test_safe_duckduckgo_search_includes_live_stock():
+    mock_stock = {
+        "title": "Live Stock: AMZN",
+        "url": "https://finance.yahoo.com/quote/AMZN",
+        "snippet": "AMZN is trading at $249.09 USD.",
+    }
+    with patch("web_search.fetch_live_stock", return_value=mock_stock), \
+         patch("urllib.request.urlopen", side_effect=urllib.error.URLError("ddg down")):
+        results = safe_duckduckgo_search("How much is amzn stock")
+
+    assert len(results) == 1
+    assert "AMZN" in results[0]["title"]
+    assert "$249.09" in results[0]["snippet"]
+
 

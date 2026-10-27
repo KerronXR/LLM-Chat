@@ -1,17 +1,28 @@
 """
 Multi-turn context-aware search query resolver.
-Resolves pronouns ('it', 'this'), continuation follow-ups ('And?', 'Price?'),
+Resolves pronouns ('it', 'this'), continuation follow-ups ('And?', 'Price?', 'You need to research'),
 and extracts primary subject entities from conversation history.
 """
 import re
 
 CONTINUATION_PATTERN = re.compile(
-    r"^(and|so|results?|anything|what\s+is\s+it|what\s+about\s+it|did\s+you\s+find\s+(?:it|anything)?)\??$",
+    r"^(and|so|results?|anything|what\s+is\s+it|what\s+about\s+it|did\s+you\s+find\s+(?:it|anything)?|"
+    r"(?:you\s+need\s+to\s+)?research(?:\s+(?:it|this|that|online))?|"
+    r"(?:can\s+you\s+)?search(?:\s+(?:for\s+it|it|online|web))?|"
+    r"(?:please\s+)?look(?:\s+it)?\s+up(?:\s+online)?|"
+    r"(?:please\s+)?check(?:\s+it)?\s+online|"
+    r"(?:can\s+you\s+)?find(?:\s+it|\s+out)?)\??$",
+    re.IGNORECASE,
+)
+
+DIRECTIVE_PATTERN = re.compile(
+    r"^(?:(?:you\s+need\s+to|can\s+you|please|go)\s+)?(?:research|search|look\s+up|check|find\s+out|google)(?:\s+(?:it|this|that|online|for|the\s+web))?[\s\.\?!]*$",
     re.IGNORECASE,
 )
 
 DEPENDENT_QUERY_PATTERN = re.compile(
-    r"\b(it|this|that|these|those|its|price|cost|how\s+much|specs|specifications|features|buy|where\s+to\s+buy|release\s+date|released|who\s+made\s+it)\b",
+    r"\b(it|this|that|these|those|its|price|cost|how\s+much|specs|specifications|features|buy|where\s+to\s+buy|"
+    r"release\s+date|released|who\s+made\s+it|research|search|look\s+up|google|check\s+online|find\s+out)\b",
     re.IGNORECASE,
 )
 
@@ -26,10 +37,24 @@ DATE_MONTH_IGNORE = re.compile(
     re.IGNORECASE,
 )
 
+REFUSAL_BOILERPLATE = re.compile(
+    r"\b(not\s+contain|does\s+not|doesn't|cannot|can't|real-time|web\s+search|"
+    r"store\s+inventory|product\s+listing|screenshot|actual\s+website|image\s+originated|"
+    r"sorry|apologize|online\s+store|visit\s+the|find\s+out\s+how\s+much)\b",
+    re.IGNORECASE,
+)
+
+PRODUCT_IDENTIFY_PATTERN = re.compile(
+    r"(?:this\s+is\s+(?:an?|the)?|looks?\s+like\s+(?:an?|the)?|appears\s+to\s+be\s+(?:an?|the)?|"
+    r"product\s+listing\s+for)\s*([A-Za-z0-9\s\-_]+?)(?:,|\.|\s+but|\s+and|\s+with|\s+or|\n|$)",
+    re.IGNORECASE,
+)
+
 QUERY_STRIP_PREFIXES = [
     r"^(?:can\s+you\s+)?(?:please\s+)?search\s+(?:the\s+)?(?:web|internet|google|ddg)?\s*(?:for\s+)?",
     r"^(?:please\s+)?look\s+up\s+",
     r"^(?:please\s+)?find\s+(?:me\s+)?(?:information\s+about\s+)?",
+    r"^(?:you\s+need\s+to\s+)?(?:please\s+)?research\s*(?:for\s+)?",
 ]
 
 
@@ -66,7 +91,7 @@ def extract_named_entities(text: str) -> list[str]:
 
 
 def extract_subject_from_history(messages: list[dict]) -> str:
-    """Extract primary named entity or topic from recent conversation turns."""
+    """Extract primary named entity or topic from recent conversation turns, filtering boilerplate."""
     for m in reversed(messages[:-1]):
         content = m.get("content", "")
         if isinstance(content, list):
@@ -75,6 +100,13 @@ def extract_subject_from_history(messages: list[dict]) -> str:
             )
         if not content:
             continue
+
+        prod_m = PRODUCT_IDENTIFY_PATTERN.search(content)
+        if prod_m:
+            prod_candidate = prod_m.group(1).strip()
+            if len(prod_candidate) > 3 and not REFUSAL_BOILERPLATE.search(prod_candidate):
+                return prod_candidate
+
         search_m = re.search(
             r"(?:search\s+for|checking\s+price\s+for|looking\s+up)\s+[\'\"]?([a-zA-Z0-9\s]+?)(?:price|[\'\"]|\.|\,|$)",
             content,
@@ -82,25 +114,34 @@ def extract_subject_from_history(messages: list[dict]) -> str:
         )
         if search_m:
             subj = search_m.group(1).strip()
-            if len(subj) > 3 and not DATE_MONTH_IGNORE.match(subj):
+            if len(subj) > 3 and not DATE_MONTH_IGNORE.match(subj) and not REFUSAL_BOILERPLATE.search(subj):
                 return subj
-        entities = extract_named_entities(content)
-        if entities:
-            filtered = [
-                e for e in entities
-                if not DATE_MONTH_IGNORE.match(e) and not IGNORE_WORDS.match(e) and len(e) > 2
-            ]
-            if filtered:
-                return max(filtered, key=len)
+
         bolds = re.findall(r"\*\*([^*]+)\*\*", content)
         if bolds:
             clean_bolds = [re.sub(r"[^a-zA-Z0-9\s]", " ", b).strip() for b in bolds]
             clean_bolds = [
                 b for b in clean_bolds
-                if 3 < len(b) < 50 and not DATE_MONTH_IGNORE.match(b) and not IGNORE_WORDS.match(b)
+                if 3 < len(b) < 50
+                and not DATE_MONTH_IGNORE.match(b)
+                and not IGNORE_WORDS.match(b)
+                and not REFUSAL_BOILERPLATE.search(b)
             ]
             if clean_bolds:
                 return clean_bolds[0]
+
+        entities = extract_named_entities(content)
+        if entities:
+            filtered = [
+                e for e in entities
+                if not DATE_MONTH_IGNORE.match(e)
+                and not IGNORE_WORDS.match(e)
+                and not REFUSAL_BOILERPLATE.search(e)
+                and len(e) > 2
+            ]
+            if filtered:
+                return max(filtered, key=len)
+
     return ""
 
 
@@ -122,9 +163,23 @@ def resolve_contextual_query(messages: list[dict]) -> str:
     if len(messages) <= 1:
         return clean_curr
 
-    if CONTINUATION_PATTERN.match(clean_curr) or clean_curr in ("?", "..."):
+    history_text = " ".join(
+        m.get("content", "") if isinstance(m.get("content"), str) else "" for m in messages[:-1]
+    )
+    price_context = bool(re.search(r"\b(price|cost|how\s+much)\b", history_text + " " + curr_text, re.I))
+
+    is_directive = (
+        not clean_curr
+        or bool(DIRECTIVE_PATTERN.match(clean_curr))
+        or bool(DIRECTIVE_PATTERN.match(curr_text.strip()))
+        or bool(CONTINUATION_PATTERN.match(clean_curr))
+        or clean_curr in ("?", "...")
+    )
+    if is_directive:
         subject = extract_subject_from_history(messages)
-        return f"{subject} price".strip() if subject else clean_curr
+        if subject:
+            return f"{subject} retail price MSRP" if price_context else f"{subject} price"
+        return clean_curr or curr_text[:100]
 
     has_dependent_word = bool(DEPENDENT_QUERY_PATTERN.search(clean_curr))
     has_own_caps = bool(re.findall(r"\b[A-Z0-9][a-zA-Z0-9]*(?:\s+[A-Z0-9][a-zA-Z0-9]*)+\b", curr_text))
@@ -137,11 +192,11 @@ def resolve_contextual_query(messages: list[dict]) -> str:
                 r"\b(it|this|that|these|those)\b", "", clean_curr, flags=re.IGNORECASE
             )
             clean_without_pronouns = re.sub(r"\s+", " ", clean_without_pronouns).strip()
-            suffix = " retail price MSRP" if re.search(r"\b(price|cost|how\s+much)\b", clean_curr, re.I) else ""
+            suffix = " retail price MSRP" if price_context else ""
             res = f"{subject} {clean_without_pronouns}{suffix}".strip()
             return res[:100]
 
-    if re.search(r"\b(price|cost|how\s+much)\b", clean_curr, re.I) and "msrp" not in clean_curr.lower():
+    if price_context and "msrp" not in clean_curr.lower():
         clean_curr = f"{clean_curr} retail price MSRP"
 
     return clean_curr[:100]
@@ -164,16 +219,15 @@ def should_trigger_search_from_history(messages: list[dict], mode: str = "auto")
     clean = AFFIRMATIVE_PREFIXES.sub("", clean).strip()
 
     from web_search import should_trigger_search
-    if should_trigger_search(clean, mode="auto"):
+    if should_trigger_search(curr_text, mode="auto") or should_trigger_search(clean, mode="auto"):
         return True
 
-    if CONTINUATION_PATTERN.match(clean) or clean in ("?", "..."):
+    if CONTINUATION_PATTERN.match(clean) or DIRECTIVE_PATTERN.match(clean) or clean in ("?", "..."):
         if len(messages) > 1:
-            prev_content = str(messages[-2].get("content", ""))
-            if re.search(r"\b(search|price|cost|weather|news|specs|finding)\b", prev_content, re.I):
-                return True
+            return True
 
     if DEPENDENT_QUERY_PATTERN.search(clean) and len(messages) > 1:
         return True
 
     return False
+

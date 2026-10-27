@@ -29,15 +29,20 @@ WEATHER_PATTERN = re.compile(
 # Temporal / current-event keywords for Auto mode
 AUTO_TRIGGER_PATTERN = re.compile(
     r"\b(202[4-9]|today|yesterday|tomorrow|current|currently|now|latest|recent|recently|"
-    r"news|weather|stock|price|who is|what is the price|release date|when will|changelog)\b",
+    r"news|weather|stock|price|prices|pricing|cost|costs|how\s+much|who\s+is|what\s+is\s+the\s+price|"
+    r"release\s+date|when\s+will|changelog|research|search|look(?:\s+it)?\s+up|google|find\s+out|check\s+online|"
+    r"specs|specifications|buy|where\s+to\s+buy)\b",
     re.IGNORECASE,
 )
+
 
 # Strip conversational filler prefixes
 QUERY_STRIP_PREFIXES = [
     r"^(?:can\s+you\s+)?(?:please\s+)?search\s+(?:the\s+)?(?:web|internet|google|ddg)?\s*(?:for\s+)?",
     r"^(?:please\s+)?look\s+up\s+",
     r"^(?:please\s+)?find\s+(?:me\s+)?(?:information\s+about\s+)?",
+    r"^(?:you\s+need\s+to\s+)?(?:please\s+)?research\s*(?:for\s+)?",
+    r"^(?:please\s+)?(?:check|google)\s+(?:online\s+for\s+)?",
 ]
 
 # Markers commonly used in prompt injection / delimiter escaping
@@ -57,8 +62,12 @@ def should_trigger_search(query_text: str, mode: str = "auto") -> bool:
         return False
     if mode == "on":
         return True
-    # Auto mode: heuristic regex matching
-    return bool(AUTO_TRIGGER_PATTERN.search(clean))
+    if bool(AUTO_TRIGGER_PATTERN.search(clean)):
+        return True
+    for prefix in QUERY_STRIP_PREFIXES:
+        if re.search(prefix, clean, flags=re.IGNORECASE):
+            return True
+    return False
 
 
 from search_context import resolve_contextual_query, should_trigger_search_from_history
@@ -123,54 +132,43 @@ def _resolve_ddg_url(raw_href: str) -> str:
     return ""
 
 
-def fetch_live_weather(location: str, timeout: float = 2.5) -> dict | None:
-    """Fetch real-time weather metrics for exact temperature & conditions."""
-    if not location or len(location) > 40:
-        return None
-    loc_clean = re.sub(r"[^a-zA-Z\s]", "", location).strip()
-    if not loc_clean:
-        return None
-    url = f"https://wttr.in/{urllib.parse.quote(loc_clean)}?format=j1"
-    req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-            cc = data.get("current_condition", [{}])[0]
-            temp_f = cc.get("temp_F", "")
-            temp_c = cc.get("temp_C", "")
-            desc = cc.get("weatherDesc", [{}])[0].get("value", "")
-            humidity = cc.get("humidity", "")
-            wind = cc.get("windspeedMiles", "")
-            return {
-                "title": f"Live Weather: {loc_clean.title()}",
-                "url": f"https://wttr.in/{urllib.parse.quote(loc_clean)}",
-                "snippet": f"Currently {desc}, {temp_f}°F ({temp_c}°C). Humidity: {humidity}%, Wind: {wind} mph.",
-            }
-    except Exception as e:
-        logger.debug("Live weather fetch skipped/failed: %s", e)
-        return None
+from live_data import fetch_live_weather, fetch_live_stock, extract_stock_ticker
 
 
 def safe_duckduckgo_search(query: str, max_results: int = MAX_SEARCH_RESULTS, timeout: float = DEFAULT_TIMEOUT) -> list[dict]:
-    """Execute private, SSRF-safe DuckDuckGo Lite search."""
+    """Execute private, SSRF-safe DuckDuckGo Lite search with live stock/weather priority."""
     clean_q = clean_search_query(query)
     if not clean_q:
         return []
 
-    weather_result = None
+    live_results = []
+    ticker = extract_stock_ticker(clean_q)
+    if ticker:
+        stock_result = fetch_live_stock(ticker, timeout=2.0)
+        if stock_result:
+            live_results.append(stock_result)
+
     w_match = WEATHER_PATTERN.search(clean_q)
     if w_match:
         loc = w_match.group(1).strip()
         weather_result = fetch_live_weather(loc, timeout=2.0)
+        if weather_result:
+            live_results.append(weather_result)
 
     data = urllib.parse.urlencode({"q": clean_q}).encode("utf-8")
     req = urllib.request.Request(
         DDG_LITE_URL,
         data=data,
         headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
             "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "text/html,application/xhtml+xml",
+            "Origin": "https://lite.duckduckgo.com",
+            "Referer": "https://lite.duckduckgo.com/",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
         },
     )
 
@@ -181,16 +179,17 @@ def safe_duckduckgo_search(query: str, max_results: int = MAX_SEARCH_RESULTS, ti
                 status = resp.getcode()
             if status not in (200, 202, None):
                 logger.warning("DuckDuckGo returned status %s", status)
-                return [weather_result] if weather_result else []
+                return live_results
             raw_html = resp.read().decode("utf-8", errors="ignore")
     except Exception as e:
         logger.warning("DuckDuckGo search request failed: %s", e)
-        return [weather_result] if weather_result else []
+        return live_results
 
     results = parse_ddg_lite_html(raw_html, max_results=max_results)
-    if weather_result:
-        results.insert(0, weather_result)
+    for lr in reversed(live_results):
+        results.insert(0, lr)
     return results[:max_results]
+
 
 
 

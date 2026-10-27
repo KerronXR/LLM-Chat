@@ -33,16 +33,19 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 with Vision + Mult
     * `cleanup_llm()`: Releases instance memory via `del` + `gc.collect()`.
     * `force_cleanup_port(port)`: Auto-kills ghost PID listening on port.
 - `web_search.py`: Zero-dependency DuckDuckGo Lite search provider with high-priority security hardening:
-    * `should_trigger_search(query_text, mode)`: Evaluates `auto`, `on`, `off` with temporal/news regex heuristics.
+    * `should_trigger_search(query_text, mode)`: Evaluates `auto`, `on`, `off` with temporal, news, stock, price, research heuristics and action prefix detection.
     * `clean_search_query(text)`: Normalizes query, strips conversational prefixes, clamps to 100 chars.
     * `sanitize_search_result(text)`: Strips HTML tags, neutralizes prompt injection markers (`<system>`, `<|turn>`, `[INST]`, `ignore previous instructions`), unescapes HTML entities.
-    * `safe_duckduckgo_search(query, max_results=5, timeout=3.5)`: SSRF-safe request strictly to DuckDuckGo Lite endpoint, filters sponsored tracking `/y.js` ads, decodes redirect links via `uddg`, validates `http`/`https` protocols.
-    * `fetch_live_weather(location, timeout=2.5)`: Fetches real-time weather metrics (temp, condition, humidity, wind) for weather queries.
+    * `safe_duckduckgo_search(query, max_results=5, timeout=3.5)`: SSRF-safe request to DuckDuckGo Lite with full browser headers (`Origin`, `Referer`, `Sec-Fetch-*`) preventing 202 captcha bot challenges, filters sponsored `/y.js` ads, decodes redirect links via `uddg`, prioritizes live stock and weather cards.
     * `format_search_prompt_context(results, max_chars=1200)`: Formats results into `<web_search_results>` reference boundary with anti-refusal and no-raw-url guidance.
+- `live_data.py`: Zero-dependency real-time metrics providers:
+    * `fetch_live_stock(ticker, timeout=2.5)`: Fetches live price, currency, day high/low from Yahoo Finance chart API.
+    * `extract_stock_ticker(query)`: Resolves company names (`amazon` -> `AMZN`, `apple` -> `AAPL`) and symbol patterns from prompt.
+    * `fetch_live_weather(location, timeout=2.5)`: Fetches real-time weather metrics from `wttr.in`.
 - `search_context.py`: Multi-turn context-aware search query resolver:
-    * `resolve_contextual_query(messages)`: Resolves pronouns (`it`, `this`), dependent queries (`the price`, `specs`), continuation prompts (`And?`, `So?`), and expands price lookups with `retail price MSRP`.
+    * `resolve_contextual_query(messages)`: Resolves pronouns (`it`, `this`), action directives (`You need to research`, `check online`, `look it up`), dependent queries (`the price`, `specs`), continuation prompts (`And?`, `So?`), expanding price lookups with `retail price MSRP`.
     * `should_trigger_search_from_history(messages, mode)`: Detects auto search intent across conversation turns.
-    * `extract_subject_from_history(messages)`: Extracts named product entities from markdown bolds, capitalized tokens, and search intents.
+    * `extract_subject_from_history(messages)`: Extracts named product entities from markdown bolds, capitalized tokens, and assistant descriptions, filtering refusal boilerplate (`does not contain`, `cannot perform`).
 - `setup_local_llm.py`: Dependency verification + downloads.
 - `index.html`: Gemini Light UI. Model selector, dynamic attach button, web search toggle button, context meter, chat thread, pill input area.
 - `login.html`: Auth portal with Gemini Light card and button styles.

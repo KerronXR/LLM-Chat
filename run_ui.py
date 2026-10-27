@@ -1,4 +1,4 @@
-import http.server, socketserver, os, json, base64, time, secrets, urllib.request, logging
+import http.server, socketserver, os, json, base64, time, secrets, urllib.request, logging, re
 from core import (
     load_local_model, logger, MODELS_MAPPING, MODELS_DIR,
     model_supports_vision, is_session_continuation, record_session_turn, reset_chat_session
@@ -141,6 +141,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                 break
                     else:
                         prompt_text = curr_content or "Please describe this image."
+                        if curr_content and re.search(r"\b(price|cost|how\s+much|buy|where|what\s+is)\b", curr_content, re.I):
+                            prompt_text = f"Identify the specific product or item shown, then answer: {curr_content}"
                     mime_type = attachment.get('mimeType') or 'image/png'
                     data_url = f"data:{mime_type};base64,{attachment['data']}"
                     logger.info("Vision attachment received: mime=%s bytes=%s", mime_type, len(attachment.get('data', '')))

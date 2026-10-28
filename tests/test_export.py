@@ -13,9 +13,9 @@ def test_export_conversation_triggers_download(page: Page):
 
     # Mock all potential fetch calls to prevent file:/// errors
     page.route("**/api/chat", lambda route: route.fulfill(
-        status=200, 
-        content_type="application/x-ndjson", 
-        body=json.dumps({"message": {"role": "assistant", "content": "I am fine"}, "done": True}).encode()
+        status=200,
+        content_type="text/event-stream",
+        body=f"data: {json.dumps({'message': {'content': 'I am fine'}})}\n\ndata: {json.dumps({'done': True})}\n\n".encode()
     ))
     page.route("**/api/history", lambda route: route.fulfill(status=200, body="[]"))
     page.route("**/api/logout", lambda route: route.fulfill(status=200, body="{}"))
@@ -38,9 +38,10 @@ def test_export_conversation_triggers_download(page: Page):
     user_input.fill("Hello")
     send_btn.click()
     
-    # Wait for user message to appear
+    # Wait for user and AI message to appear
     chat_window = page.locator("#chat-window")
     expect(chat_window).to_contain_text("Hello", timeout=5000)
+    expect(chat_window).to_contain_text("I am fine", timeout=5000)
     
     # Click export button and wait for download
     export_btn = page.locator("#export-btn")

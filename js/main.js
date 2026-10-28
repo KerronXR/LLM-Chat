@@ -2,13 +2,12 @@ import { state, DOM, updateContextUI } from './state.js';
 import { handleSend, handleStopOrNew, handleClearChat, handleExport, handleFileChange, clearAttachment, ensureJpegDataUrl } from './handlers.js';
 import { initClipboardPasteHandler } from './attachments.js';
 import { handleToggleWebSearch } from './search.js';
-import { setGenerating, toggleSidebar, appendMessage } from './ui.js';
+import { setGenerating, toggleSidebar, appendMessage, requestWakeLock } from './ui.js';
 
 import { savePersona, getHistory, getPersona, logout } from './api.js';
 
 initClipboardPasteHandler();
 
-// Init
 // Add mobile toggle elements to DOM
 if (!document.getElementById('mobile-toggle')) {
     const toggle = document.createElement('div');
@@ -26,10 +25,21 @@ if (!document.getElementById('mobile-toggle')) {
     backdrop.onclick = () => toggleSidebar(false);
 }
 
+export function renderMessages(messages) {
+    DOM.chatWindow.innerHTML = '';
+    messages.forEach(msg => {
+        const contentText = typeof msg.content === 'string' ? msg.content : '';
+        const isImage = contentText.startsWith('Images generated:') || contentText.startsWith('Image generated:');
+        let content = msg;
+        if (contentText.startsWith('Images generated: ')) content = contentText.replace('Images generated: ', '').split(', ');
+        else if (contentText.startsWith('Image generated: ')) content = contentText.replace('Image generated: ', '');
+        appendMessage(msg.role === 'user' ? 'user' : 'ai', content, isImage);
+    });
+}
+
 // Load history
 getHistory().then(async history => {
     if (history && history.length > 0) {
-        // Deduplicate history by comparing roles and content
         const uniqueHistory = [];
         const seen = new Set();
         for (const msg of history) {
@@ -43,19 +53,8 @@ getHistory().then(async history => {
                 uniqueHistory.push(msg);
             }
         }
-        
         state.messages = uniqueHistory;
-        DOM.chatWindow.innerHTML = '';
-        state.messages.forEach(msg => {
-            const contentText = typeof msg.content === 'string' ? msg.content : '';
-            const isImage = contentText.startsWith('Images generated:') || contentText.startsWith('Image generated:');
-            
-            let content = msg;
-            if (contentText.startsWith('Images generated: ')) content = contentText.replace('Images generated: ', '').split(', ');
-            else if (contentText.startsWith('Image generated: ')) content = contentText.replace('Image generated: ', '');
-            
-            appendMessage(msg.role === 'user' ? 'user' : 'ai', content, isImage);
-        });
+        renderMessages(state.messages);
     }
 });
 
@@ -126,3 +125,20 @@ DOM.savePersonaBtn.onclick = async () => {
 // Initial UI state
 updateContextUI();
 
+// Sync state on visibility change (phone unlock / tab reactivation)
+document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible') {
+        if (state.isGenerating) {
+            requestWakeLock();
+        } else {
+            try {
+                // Fetch latest conversation from /api/history
+                const history = await getHistory();
+                if (Array.isArray(history) && history.length > state.messages.length) {
+                    state.messages = history;
+                    renderMessages(history);
+                }
+            } catch (e) {}
+        }
+    }
+});

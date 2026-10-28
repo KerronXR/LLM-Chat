@@ -21,13 +21,13 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 and Qwen2.5-VL wit
     * `GET /persona.txt`: Load persistent persona.
     * `GET /api/history`: Load JSON chat history.
     * `POST /api/login`: Validate `password == "AAaa1111$"`.
-    * `POST /api/chat`: SSE streaming response (`data: {...}\n\n`).
+    * `POST /api/chat`: SSE streaming response (`data: {...}\n\n`). Background heartbeat daemon sends `: ping\n\n` every 5.0s during prompt eval and generation preventing reverse proxy and browser idle timeouts.
     * `POST /api/history`: Save JSON chat history. Empty array triggers `reset_chat_session()`.
     * `POST /api/logout`: Expire session.
     * `POST /save_persona`: Save persona text.
     * `normalize_incoming_attachments(data)`: Normalizes up to 3 attachments supporting `type: 'image'`, `kind: 'image'`, and MIME types (`image/*`), preserving `dataUrl`.
     * `build_continuation_turn(model_id, user_text)`: Formats turn tokens and stop sequences by model family (Gemma `<start_of_turn>`, Qwen/DeepSeek `<|im_start|>`, Llama-3 `<|start_header_id|>`).
-    * Socket abort handling: Catches `(ConnectionResetError, ConnectionAbortedError, BrokenPipeError)`, logs at INFO, resets session with `reset_chat_session()`.
+    * Disconnect resilience: Catches `(ConnectionResetError, ConnectionAbortedError, BrokenPipeError)`, logs at INFO, commits partial/completed turn to `record_session_turn` and auto-persists to `history.json` preserving continuation state. General exceptions call `reset_chat_session()`.
 - `core.py`: Model loader + vision chat format handler + stateful session tracker.
     * `load_local_model(model_id)`: Singleton cache, `n_ctx=get_model_context_length(model_id)`, `n_gpu_layers=0`, `n_threads=max(1, os.cpu_count()-2)`, `flash_attn=True`.
     * `get_model_context_length(model_id)`: Allocates `8192` context window for vision models (`gemma-4-e4b-it:latest`, `qwen2.5-vl-7b-instruct:latest`), `4096` for text models.
@@ -71,10 +71,10 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 and Qwen2.5-VL wit
     * `dom.js`: Cached DOM element references.
     * `search.js`: Web search mode toggler (`auto`/`on`/`off`) and compact sources summary badge (`🌐 {count} search results`).
     * `markdown.js`: Streaming-safe Markdown + table parser.
-    * `ui.js`: Message rendering, auto-scroll, image viewer.
+    * `ui.js`: Message rendering, auto-scroll, image viewer, Screen Wake Lock API management (`requestWakeLock`/`releaseWakeLock`) keeping mobile display active during generation.
     * `handlers.js`: Streaming SSE reader, instant thinking bubble creation, immediate UI clipboard clearing on send, mid-turn interruption support, search status updates, dynamic markdown render, live TPS counter.
     * `api.js`: Fetch client wrappers.
-    * `main.js`: Initialization, model select listener, attach button toggle based on `isVisionModel` (Gemma and Qwen-VL), search toggle listener.
+    * `main.js`: Initialization, model select listener, attach button toggle based on `isVisionModel` (Gemma and Qwen-VL), search toggle listener, `visibilitychange` handler resyncing history from `/api/history` on phone screen unlock.
 - `LocalChat.bat`: Launch wrapper script for Windows.
 - `history.json`: Active chat conversation persistence.
 - `persona.txt`: System persona persistence.

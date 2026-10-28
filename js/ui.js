@@ -103,8 +103,33 @@ function buildAttachmentNode(attachment) {
     return fileChip;
 }
 
+let screenWakeLock = null;
+
+export async function requestWakeLock() {
+    if ('wakeLock' in navigator && document.visibilityState === 'visible') {
+        try {
+            screenWakeLock = await navigator.wakeLock.request('screen');
+            screenWakeLock.addEventListener('release', () => { screenWakeLock = null; });
+        } catch (e) {
+            console.warn('Screen WakeLock unavailable:', e);
+        }
+    }
+}
+
+export function releaseWakeLock() {
+    if (screenWakeLock) {
+        try { screenWakeLock.release(); } catch (e) {}
+        screenWakeLock = null;
+    }
+}
+
 export function setGenerating(generating = true) {
     state.isGenerating = generating;
+    if (generating) {
+        requestWakeLock();
+    } else {
+        releaseWakeLock();
+    }
     // Keep send button active so user can interrupt generation anytime
     DOM.sendBtn.disabled = false;
     DOM.stopBtn.textContent = generating ? 'Stop' : 'New';

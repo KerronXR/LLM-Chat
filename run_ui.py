@@ -1,11 +1,11 @@
-import http.server, socketserver, os, json, base64, time, secrets, urllib.request, logging, re
+import http.server, socketserver, os, json, base64, time, secrets, urllib.request, logging, re, threading
 from core import (
     load_local_model, logger, MODELS_MAPPING, MODELS_DIR,
     model_supports_vision, is_session_continuation, record_session_turn, reset_chat_session
 )
 import atexit, signal
 
-PORT = 8000
+PORT, HEARTBEAT_INTERVAL = 8000, 5.0
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.join(DIRECTORY, "images")
 HISTORY_FILE, SESSIONS_FILE, PASSWORD = os.path.join(DIRECTORY, "history.json"), os.path.join(DIRECTORY, "sessions.json"), "AAaa1111$"
@@ -112,10 +112,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header('X-Accel-Buffering', 'no')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
+        write_lock = threading.Lock()
         def chunk(obj):
-            line = f"data: {json.dumps(obj)}\n\n"
-            self.wfile.write(line.encode('utf-8'))
-            self.wfile.flush()
+            with write_lock:
+                if getattr(self.wfile, 'closed', None) is True: return
+                try:
+                    self.wfile.write(f"data: {json.dumps(obj)}\n\n".encode('utf-8'))
+                    self.wfile.flush()
+                except Exception: pass
+        stop_hb = threading.Event()
+        def _hb():
+            while not stop_hb.wait(HEARTBEAT_INTERVAL):
+                with write_lock:
+                    if getattr(self.wfile, 'closed', None) is True: break
+                    try:
+                        self.wfile.write(b": ping\n\n"); self.wfile.flush()
+                    except Exception: break
+        threading.Thread(target=_hb, daemon=True).start()
         msg = data.get('messages', [])
         attachments = normalize_incoming_attachments(data)
         has_history_images = any(
@@ -127,17 +140,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         )
         vision_requested = any(a.get('type') == 'image' for a in attachments) or has_history_images
         if vision_requested and not model_supports_vision(mid):
-            chunk({
-                "model": mid,
-                "message": {
-                    "role": "assistant",
-                    "content": "This model cannot analyze attached images. Switch to Gemma-4 E4B (Latest 2026) and try again."
-                },
-                "done": True,
-                "prompt_eval_count": 0,
-                "eval_count": 0,
-                "context_length": 8192
-            })
+            chunk({"model": mid, "message": {"role": "assistant", "content": "This model cannot analyze attached images. Switch to Gemma-4 E4B (Latest 2026) and try again."}, "done": True, "prompt_eval_count": 0, "eval_count": 0, "context_length": 8192})
             return
 
         for att in attachments:
@@ -243,23 +246,31 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                         live_tps = round(ec / elapsed, 2) if elapsed > 0 else 0
                         chunk({"model": mid, "message": {"role": "assistant", "content": delta["content"]}, "done": False, "tps": live_tps})
             full_reply = "".join(assistant_reply)
-            record_session_turn(msg, full_reply, llm.n_tokens, mid)
+            record_session_turn(msg, full_reply, getattr(llm, 'n_tokens', 0), mid)
+            try:
+                with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(list(msg) + [{"role": "assistant", "content": full_reply}], f, ensure_ascii=False)
+            except Exception: pass
             gen_elapsed = time.perf_counter() - gen_start if gen_start else 0
             avg_tps = round(ec / gen_elapsed, 2) if gen_elapsed > 0 else 0
             chunk({"model": mid, "message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192, "avg_tps": avg_tps})
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError) as e:
-            logger.info("Client aborted connection during generation: %s", e)
-            reset_chat_session()
+            logger.info("Client disconnected/locked during generation: %s", e)
+            if assistant_reply:
+                full_reply = "".join(assistant_reply)
+                record_session_turn(msg, full_reply, getattr(llm, 'n_tokens', 0), mid)
+                try:
+                    with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+                        json.dump(list(msg) + [{"role": "assistant", "content": full_reply}], f, ensure_ascii=False)
+                except Exception: pass
         except Exception as e:
             logger.error("Chat generation failed for %s: %s", mid, e, exc_info=True)
-            try:
-                chunk({"error": str(e), "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192})
-            except Exception:
-                pass
+            reset_chat_session()
+            try: chunk({"error": str(e), "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192})
+            except Exception: pass
         finally:
+            stop_hb.set()
             self.close_connection = True
-
-
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
@@ -267,20 +278,14 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 def handle_exit(sig, frame):
     from core import cleanup_llm
     logger.info(f"Signal {sig} received. Cleaning up...")
-    cleanup_llm()
-    # On Windows, os._exit(0) is the most reliable way to kill sub-threads
-    os._exit(0)
+    cleanup_llm(); os._exit(0)
 
 if __name__ == "__main__":
     from core import force_cleanup_port
     force_cleanup_port(PORT)
-    
-    # Handle normal exit and sudden breaks
     signal.signal(signal.SIGINT, handle_exit)
     signal.signal(signal.SIGTERM, handle_exit)
-    if hasattr(signal, 'SIGBREAK'):
-        signal.signal(signal.SIGBREAK, handle_exit)
-    
+    if hasattr(signal, 'SIGBREAK'): signal.signal(signal.SIGBREAK, handle_exit)
     try:
         server = ThreadedHTTPServer(("", PORT), Handler)
         logger.info(f"Server ready at http://localhost:{PORT}")

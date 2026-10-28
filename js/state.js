@@ -8,7 +8,7 @@ export const state = {
     abortController: null,
     contextSize: 0,
     maxContext: 8192,
-    activeModel: "gemma-4-e4b-it:latest",
+    activeModel: "qwen2.5-vl-7b-instruct:latest",
     attachedFiles: [],
     get attachedFile() {
         return this.attachedFiles && this.attachedFiles.length > 0 ? this.attachedFiles[0] : null;

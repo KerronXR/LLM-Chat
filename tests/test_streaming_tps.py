@@ -1,5 +1,5 @@
 """
-Backend tests for TPS (tokens-per-second) data in NDJSON stream.
+Backend tests for TPS (tokens-per-second) data in NDJSON / SSE stream.
 Tests timing injection in handle_chat without loading actual LLM.
 """
 import io
@@ -50,6 +50,23 @@ def _fake_stream_output(tokens):
         yield {"choices": [{"delta": {"content": tok}}]}
 
 
+def _parse_sse(resp_text):
+    parsed = []
+    for line in resp_text.strip().split("\n"):
+        line = line.strip()
+        if line.startswith("data: "):
+            try:
+                parsed.append(json.loads(line[6:]))
+            except Exception:
+                pass
+        elif line and not line.startswith(":"):
+            try:
+                parsed.append(json.loads(line))
+            except Exception:
+                pass
+    return parsed
+
+
 class TestStreamChunksTps:
     """Verify each streaming chunk includes live tps field."""
 
@@ -65,15 +82,13 @@ class TestStreamChunksTps:
             with patch("run_ui.load_local_model", return_value=fake_llm):
                 resp = requests.post(
                     f"http://127.0.0.1:{port}/api/chat",
-                    json={"model": "gemma-4-e4b-it-heretic:latest", "messages": [{"role": "user", "content": "hi"}]},
+                    json={"model": "qwen2.5-vl-7b-instruct:latest", "messages": [{"role": "user", "content": "hi"}]},
                     cookies=_auth(), stream=True, timeout=10,
                 )
 
             assert resp.status_code == 200
-            lines = [l for l in resp.text.strip().split("\n") if l.strip()]
-            parsed = [json.loads(l) for l in lines]
+            parsed = _parse_sse(resp.text)
 
-            # Non-final chunks must have tps
             streaming = [c for c in parsed if not c.get("done")]
             assert len(streaming) >= 2
             for c in streaming:
@@ -95,12 +110,11 @@ class TestStreamChunksTps:
             with patch("run_ui.load_local_model", return_value=fake_llm):
                 resp = requests.post(
                     f"http://127.0.0.1:{port}/api/chat",
-                    json={"model": "gemma-4-e4b-it-heretic:latest", "messages": [{"role": "user", "content": "test"}]},
+                    json={"model": "qwen2.5-vl-7b-instruct:latest", "messages": [{"role": "user", "content": "test"}]},
                     cookies=_auth(), stream=True, timeout=10,
                 )
 
-            lines = [l for l in resp.text.strip().split("\n") if l.strip()]
-            parsed = [json.loads(l) for l in lines]
+            parsed = _parse_sse(resp.text)
             final = [c for c in parsed if c.get("done")]
             assert len(final) == 1
             assert "avg_tps" in final[0]
@@ -115,7 +129,6 @@ class TestStreamChunksTps:
         port = 19202
         server, orig = _start_server(tmp, port)
         try:
-            # Slow generator — ~100ms per token → ~10 tok/s expected
             def slow_stream():
                 for tok in ["a", "b", "c", "d", "e"]:
                     time.sleep(0.1)
@@ -128,15 +141,13 @@ class TestStreamChunksTps:
             with patch("run_ui.load_local_model", return_value=fake_llm):
                 resp = requests.post(
                     f"http://127.0.0.1:{port}/api/chat",
-                    json={"model": "gemma-4-e4b-it-heretic:latest", "messages": [{"role": "user", "content": "slow"}]},
+                    json={"model": "qwen2.5-vl-7b-instruct:latest", "messages": [{"role": "user", "content": "slow"}]},
                     cookies=_auth(), stream=True, timeout=15,
                 )
 
-            lines = [l for l in resp.text.strip().split("\n") if l.strip()]
-            parsed = [json.loads(l) for l in lines]
+            parsed = _parse_sse(resp.text)
             final = [c for c in parsed if c.get("done")][0]
 
-            # 5 tokens over ~0.5s → ~10 tok/s (allow wide margin for CI)
             assert 3 < final["avg_tps"] < 30, f"avg_tps {final['avg_tps']} out of expected range"
         finally:
             _stop_server(server, orig)
@@ -154,16 +165,14 @@ class TestStreamChunksTps:
                 resp = requests.post(
                     f"http://127.0.0.1:{port}/api/chat",
                     json={
-                        "model": "gemma-4-e4b-it-heretic:latest",
+                        "model": "deepseek-r1-distill-qwen-7b-uncensored:latest",
                         "messages": [{"role": "user", "content": "describe"}],
                         "attachment": {"type": "image", "data": "abc", "mimeType": "image/png"},
                     },
                     cookies=_auth(), stream=True, timeout=10,
                 )
 
-            lines = [l for l in resp.text.strip().split("\n") if l.strip()]
-            parsed = [json.loads(l) for l in lines]
-            # Vision unsupported → error msg, no generation, no tps
+            parsed = _parse_sse(resp.text)
             for c in parsed:
                 assert "tps" not in c, "tps should not appear in vision-error response"
                 assert "avg_tps" not in c, "avg_tps should not appear in vision-error response"
@@ -172,7 +181,7 @@ class TestStreamChunksTps:
             shutil.rmtree(tmp, ignore_errors=True)
 
     def test_image_attachment_stream_has_tps(self):
-        """Vision-capable model + image → stream still contains tps fields."""
+        """Vision-capable model + image -> stream still contains tps fields."""
         tmp = tempfile.mkdtemp()
         port = 19204
         server, orig = _start_server(tmp, port)
@@ -187,15 +196,14 @@ class TestStreamChunksTps:
                 resp = requests.post(
                     f"http://127.0.0.1:{port}/api/chat",
                     json={
-                        "model": "gemma-4-e4b-it-heretic:latest",
+                        "model": "qwen2.5-vl-7b-instruct:latest",
                         "messages": [{"role": "user", "content": "describe this"}],
                         "attachment": {"type": "image", "data": "abc123", "mimeType": "image/jpeg"},
                     },
                     cookies=_auth(), stream=True, timeout=10,
                 )
 
-            lines = [l for l in resp.text.strip().split("\n") if l.strip()]
-            parsed = [json.loads(l) for l in lines]
+            parsed = _parse_sse(resp.text)
             streaming = [c for c in parsed if not c.get("done")]
             assert len(streaming) >= 1
             assert "tps" in streaming[0]

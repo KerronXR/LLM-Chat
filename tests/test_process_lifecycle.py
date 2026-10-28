@@ -46,5 +46,5 @@ def test_stop_fastsd_is_thorough():
     p = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     import core
     core.fastsd_process = p
-    stop_fastsd()
+    core.stop_fastsd()
     assert p.poll() is not None, "Process was not killed by stop_fastsd"

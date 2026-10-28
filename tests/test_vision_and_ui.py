@@ -13,38 +13,32 @@ sys.path.insert(0, PROJECT_ROOT)
 
 import core
 
-GEMMA_ID = "gemma-4-e4b-it:latest"
-LLAMA_ID = "llama-3.2-3b-instruct-uncensored:latest"
-PROJECTOR_FILE = "mmproj-google_gemma-4-E4B-it-f16.gguf"
+QWEN_ID = "qwen2.5-vl-7b-instruct:latest"
+DEEPSEEK_ID = "deepseek-r1-distill-qwen-7b-uncensored:latest"
+PROJECTOR_FILE = "mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf"
 
 
-def test_gemma_projector_mapped_in_core():
-    """Verify Gemma Official is mapped to restored vision projector."""
-    assert GEMMA_ID in core.VISION_PROJECTOR_MAPPING
-    assert core.VISION_PROJECTOR_MAPPING[GEMMA_ID] == PROJECTOR_FILE
+def test_qwen_projector_mapped_in_core():
+    """Verify Qwen2.5-VL is mapped to vision projector."""
+    assert QWEN_ID in core.VISION_PROJECTOR_MAPPING
+    assert core.VISION_PROJECTOR_MAPPING[QWEN_ID] == PROJECTOR_FILE
 
 
-def test_model_supports_vision_gemma():
-    """Verify model_supports_vision returns True for Gemma, False for Llama."""
-    assert core.model_supports_vision(GEMMA_ID) is True
-    assert core.model_supports_vision(LLAMA_ID) is False
-
-
-def test_model_supports_vision_qwen_vl(monkeypatch):
-    """Verify model_supports_vision returns True for Qwen2.5-VL when projector exists."""
-    assert "qwen2.5-vl-7b-instruct:latest" in core.VISION_PROJECTOR_MAPPING
+def test_model_supports_vision_qwen_vs_deepseek(monkeypatch):
+    """Verify model_supports_vision returns True for Qwen, False for DeepSeek."""
     monkeypatch.setattr(os.path, "exists", lambda p: True)
-    assert core.model_supports_vision("qwen2.5-vl-7b-instruct:latest") is True
+    assert core.model_supports_vision(QWEN_ID) is True
+    assert core.model_supports_vision(DEEPSEEK_ID) is False
 
 
-def test_index_html_default_selected_is_gemma():
-    """Verify index.html selects Gemma by default."""
+def test_index_html_default_selected_is_qwen():
+    """Verify index.html selects Qwen by default."""
     html_path = os.path.join(PROJECT_ROOT, "index.html")
     with open(html_path, "r", encoding="utf-8") as f:
         html = f.read()
 
-    expected_selected = f'value="{GEMMA_ID}" selected'
-    assert expected_selected in html, f"index.html must mark {GEMMA_ID} as selected"
+    expected_selected = f'value="{QWEN_ID}" selected'
+    assert expected_selected in html, f"index.html must mark {QWEN_ID} as selected"
 
 
 def test_main_js_controls_attach_btn_display():

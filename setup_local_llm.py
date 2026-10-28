@@ -8,19 +8,14 @@ logger = logging.getLogger(__name__)
 
 MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Models"))
 
-# We map the UI model identifiers to HuggingFace repo and filename.
 MODELS_TO_DOWNLOAD = {
-    "llama-3.2-3b-instruct-uncensored:latest": {
-        "repo": "bartowski/Llama-3.2-3B-Instruct-uncensored-GGUF",
-        "filename": "Llama-3.2-3B-Instruct-uncensored-Q4_K_M.gguf"
+    "qwen2.5-vl-7b-instruct:latest": {
+        "repo": "unsloth/Qwen2.5-VL-7B-Instruct-GGUF",
+        "filename": "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
     },
     "deepseek-r1-distill-qwen-7b-uncensored:latest": {
         "repo": "mradermacher/DeepSeek-R1-Distill-Qwen-7B-Uncensored-GGUF",
         "filename": "DeepSeek-R1-Distill-Qwen-7B-Uncensored.Q4_K_M.gguf"
-    },
-    "gemma-4-e4b-it:latest": {
-        "repo": "bartowski/google_gemma-4-E4B-it-GGUF",
-        "filename": "google_gemma-4-E4B-it-Q6_K.gguf"
     }
 }
 def install_dependencies():

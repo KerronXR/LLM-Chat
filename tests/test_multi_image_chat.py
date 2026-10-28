@@ -181,21 +181,13 @@ def test_model_select_toggles_attach_button_visibility(page: Page):
 
     attach_btn = page.locator("#attach-btn")
 
-    # 1. Default (Gemma) -> visible
+    # 1. Default (Qwen-VL) -> visible
     expect(attach_btn).to_be_visible()
 
-    # 2. Select Qwen-VL -> visible
-    page.locator("#model-select").select_option("qwen2.5-vl-7b-instruct:latest")
-    expect(attach_btn).to_be_visible()
-
-    # 3. Select Llama-3.2 (Text-only) -> hidden
-    page.locator("#model-select").select_option("llama-3.2-3b-instruct-uncensored:latest")
-    expect(attach_btn).to_be_hidden()
-
-    # 4. Select DeepSeek-R1 (Text-only) -> hidden
+    # 2. Select DeepSeek-R1 (Text-only) -> hidden
     page.locator("#model-select").select_option("deepseek-r1-distill-qwen-7b-uncensored:latest")
     expect(attach_btn).to_be_hidden()
 
-    # 5. Switch back to Qwen-VL -> visible again
+    # 3. Switch back to Qwen-VL -> visible again
     page.locator("#model-select").select_option("qwen2.5-vl-7b-instruct:latest")
     expect(attach_btn).to_be_visible()

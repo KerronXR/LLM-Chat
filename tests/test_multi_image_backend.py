@@ -91,16 +91,16 @@ def test_run_ui_handle_chat_no_unbound_attachment():
     assert not re.search(r"\bif\s+attachment\b", source), "Found unbound 'if attachment' in handle_chat"
 
 
-def test_run_ui_continuation_gemma_tokens_and_stop():
+def test_run_ui_continuation_tokens_and_stop():
     import run_ui
     import inspect
     source = inspect.getsource(run_ui)
     # Must not contain bogus '<turn|>' or '<|turn>' tags
     assert "<turn|>" not in source
     assert "<|turn>" not in source
-    # Must use Gemma tags
-    assert "<start_of_turn>" in source
-    assert "<end_of_turn>" in source
+    # Must use ChatML tags for Qwen / DeepSeek
+    assert "<|im_start|>" in source
+    assert "<|im_end|>" in source
 
 
 def test_run_ui_handles_connection_aborted():
@@ -124,11 +124,6 @@ def test_core_qwen25_vl_mapping_and_handler():
 
 def test_continuation_tags_format_aware():
     import run_ui
-    # Gemma model format
-    gemma_prompt, gemma_stops = run_ui.build_continuation_turn("gemma-4-e4b-it:latest", "what is this")
-    assert "<start_of_turn>user\nwhat is this<end_of_turn>\n<start_of_turn>model\n" == gemma_prompt
-    assert "<end_of_turn>" in gemma_stops
-
     # Qwen2.5-VL / ChatML format
     qwen_prompt, qwen_stops = run_ui.build_continuation_turn("qwen2.5-vl-7b-instruct:latest", "what is this")
     assert "<|im_start|>user\nwhat is this<|im_end|>\n<|im_start|>assistant\n" == qwen_prompt
@@ -137,9 +132,8 @@ def test_continuation_tags_format_aware():
 
 def test_vision_model_context_length():
     import core
-    assert core.get_model_context_length("gemma-4-e4b-it:latest") == 8192
     assert core.get_model_context_length("qwen2.5-vl-7b-instruct:latest") == 8192
-    assert core.get_model_context_length("llama-3.2-3b-instruct-uncensored:latest") == 4096
+    assert core.get_model_context_length("deepseek-r1-distill-qwen-7b-uncensored:latest") == 4096
 
 
 def test_qwen25_vl_chat_handler_supports_both_image_formats():

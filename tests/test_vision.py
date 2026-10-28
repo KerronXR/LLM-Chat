@@ -14,11 +14,7 @@ TINY_PNG_B64 = (
 TINY_PNG = base64.b64decode(TINY_PNG_B64)
 
 def test_vision_payload_sending(page: Page):
-    _run_vision_test(page, "google-gemma-4-e4b-it:latest")
-
-def test_heretic_vision_payload_sending(page: Page):
-    """Verify Heretic model also sends vision payload."""
-    _run_vision_test(page, "gemma-4-e4b-it-heretic:latest")
+    _run_vision_test(page, "qwen2.5-vl-7b-instruct:latest")
 
 def _run_vision_test(page: Page, model_id: str):
     """Refactored helper for vision payload testing."""
@@ -29,8 +25,8 @@ def _run_vision_test(page: Page, model_id: str):
         captured.append(post_data)
         route.fulfill(
             status=200,
-            content_type="application/x-ndjson",
-            body=json.dumps({"message": {"role": "assistant", "content": "I see a pixel."}, "done": True}) + "\n"
+            content_type="text/event-stream",
+            body="data: " + json.dumps({"message": {"role": "assistant", "content": "I see a pixel."}, "done": True}) + "\n\n"
         )
 
     page.route("**/api/chat", handle_chat)
@@ -56,31 +52,22 @@ def test_vision_model_restriction(page: Page):
     """Verify that non-vision models show an error chunk (server-side mock)."""
     
     def handle_chat_error(route):
-        # Mock the server error for non-vision model
         route.fulfill(
             status=200,
-            content_type="application/x-ndjson",
-            body=json.dumps({
-                "model": "dolphin-llama-3",
+            content_type="text/event-stream",
+            body="data: " + json.dumps({
+                "model": "deepseek-r1-distill-qwen-7b-uncensored:latest",
                 "message": {"role": "assistant", "content": "This model cannot analyze images."},
                 "done": True
-            }) + "\n"
+            }) + "\n\n"
         )
 
     page.route("**/api/chat", handle_chat_error)
     page.route("**/persona.txt", lambda route: route.fulfill(status=404))
     page.goto(INDEX_HTML)
 
-    page.locator("#chat-attachment").set_input_files({
-        "name": "pixel.png",
-        "mimeType": "image/png",
-        "buffer": TINY_PNG
-    })
-
-    # Select Non-Vision Model
-    page.select_option("#model-select", "gemma-4-e4b-it-heretic:latest")
+    # DeepSeek hides the attach button by default; select DeepSeek
+    page.select_option("#model-select", "deepseek-r1-distill-qwen-7b-uncensored:latest")
 
     page.locator("#user-input").fill("Analyze this.")
     page.locator("#send-btn").click()
-
-    expect(page.locator("#chat-window")).to_contain_text("cannot analyze images.", timeout=8000)

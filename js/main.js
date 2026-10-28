@@ -86,18 +86,16 @@ DOM.chatAttachment.addEventListener('change', handleFileChange);
 if (DOM.webSearchBtn) DOM.webSearchBtn.onclick = handleToggleWebSearch;
 
 function updateSystemPrompt(model) {
-    if (model.includes('gemma')) {
-         DOM.systemPrompt.value = "You are Gemma, a helpful AI assistant.";
-    } else if (model.includes('qwen')) {
-         DOM.systemPrompt.value = "You are a helpful and capable AI assistant.";
+    if (model.includes('deepseek') || model.includes('r1')) {
+         DOM.systemPrompt.value = "You are a helpful and capable AI assistant with deep reasoning skills.";
     } else {
-         DOM.systemPrompt.value = "You are a helpful AI assistant.";
+         DOM.systemPrompt.value = "You are a helpful and capable AI assistant.";
     }
 }
 
 function updateModelCapabilities(model) {
     const lower = (model || '').toLowerCase();
-    const supportsVision = lower.includes('gemma') || lower.includes('-vl') || lower.includes('vl-') || lower.includes('vision');
+    const supportsVision = (lower.includes('-vl') || lower.includes('vl-') || lower.includes('vision')) && !lower.includes('deepseek');
     DOM.attachBtn.style.display = supportsVision ? 'flex' : 'none';
     if (!supportsVision && (state.attachedFile || (state.attachedFiles && state.attachedFiles.length > 0))) {
         clearAttachment();

@@ -26,25 +26,15 @@ logger = logging.getLogger(__name__)
 
 MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Models"))
 MODELS_MAPPING = {
-    "llama-3.2-3b-instruct-uncensored:latest": "Llama-3.2-3B-Instruct-uncensored-Q4_K_M.gguf",
-    "deepseek-r1-distill-qwen-7b-uncensored:latest": "DeepSeek-R1-Distill-Qwen-7B-Uncensored.Q4_K_M.gguf",
-    "gemma-4-e4b-it:latest": "google_gemma-4-E4B-it-Q6_K.gguf",
-    "qwen2.5-vl-7b-instruct:latest": "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
+    "qwen2.5-vl-7b-instruct:latest": "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+    "deepseek-r1-distill-qwen-7b-uncensored:latest": "DeepSeek-R1-Distill-Qwen-7B-Uncensored.Q4_K_M.gguf"
 }
 
 def get_chat_format(model_id):
-    mid = (model_id or "").lower()
-    if "llama-3" in mid or "llama3" in mid:
-        return "llama-3"
-    if "deepseek" in mid or "qwen" in mid:
-        return "chatml"
-    return "gemma"
+    return "chatml"
 
-ASSISTANT_MAPPING = {
-    "gemma-4-e4b-it:latest": "gemma-4-E4B-it-assistant.Q8_0.gguf"
-}
+ASSISTANT_MAPPING = {}
 VISION_PROJECTOR_MAPPING = {
-    "gemma-4-e4b-it:latest": "mmproj-google_gemma-4-E4B-it-f16.gguf",
     "qwen2.5-vl-7b-instruct:latest": "mmproj-Qwen2.5-VL-7B-Instruct-f16.gguf"
 }
 
@@ -280,6 +270,19 @@ def cleanup_llm():
         llm_instance = None
         gc.collect()
         logger.info("Memory collection triggered.")
+
+fastsd_process = None
+
+def stop_fastsd():
+    """Terminate the running fastsd process if alive."""
+    global fastsd_process
+    if fastsd_process and fastsd_process.poll() is None:
+        fastsd_process.kill()
+        try:
+            fastsd_process.wait(timeout=3)
+        except Exception:
+            pass
+        fastsd_process = None
 
 
 

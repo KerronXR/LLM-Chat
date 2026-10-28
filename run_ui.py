@@ -33,12 +33,7 @@ def normalize_incoming_attachments(data):
 
 
 def build_continuation_turn(model_id, user_text):
-    mid = (model_id or "").lower()
-    if "qwen" in mid or "deepseek" in mid:
-        return f"<|im_start|>user\n{user_text}<|im_end|>\n<|im_start|>assistant\n", ["<|im_end|>", "<|endoftext|>"]
-    if "llama-3" in mid or "llama3" in mid:
-        return f"<|start_header_id|>user<|end_header_id|>\n\n{user_text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n", ["<|eot_id|>", "<|end_of_text|>"]
-    return f"<start_of_turn>user\n{user_text}<end_of_turn>\n<start_of_turn>model\n", ["<end_of_turn>", "<eos>"]
+    return f"<|im_start|>user\n{user_text}<|im_end|>\n<|im_start|>assistant\n", ["<|im_end|>", "<|endoftext|>"]
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -110,7 +105,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if _active_abort: _active_abort.set()
             my_abort = threading.Event()
             _active_abort = my_abort
-        data = json.loads(raw); mid = data.get('model', 'gemma-4-e4b-it:latest'); llm = load_local_model(mid)
+        data = json.loads(raw); mid = data.get('model', 'qwen2.5-vl-7b-instruct:latest'); llm = load_local_model(mid)
         self.send_response(200)
         self.send_header('Content-Type', 'text/event-stream')
         self.send_header('Cache-Control', 'no-cache')
@@ -146,7 +141,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         )
         vision_requested = any(a.get('type') == 'image' for a in attachments) or has_history_images
         if vision_requested and not model_supports_vision(mid):
-            chunk({"model": mid, "message": {"role": "assistant", "content": "This model cannot analyze attached images. Switch to Gemma-4 E4B (Latest 2026) and try again."}, "done": True, "prompt_eval_count": 0, "eval_count": 0, "context_length": 8192})
+            chunk({"model": mid, "message": {"role": "assistant", "content": "This model cannot analyze attached images. Switch to Qwen2.5-VL 7B and try again."}, "done": True, "prompt_eval_count": 0, "eval_count": 0, "context_length": 8192})
             return
 
         for att in attachments:

@@ -39,7 +39,7 @@ def test_run_ui_detects_vision_in_history_without_new_attachment():
 
 
 def test_multiturn_vision_inference():
-    """Verify Gemma handles multi-turn conversation where image was sent in turn 1."""
+    """Verify Qwen handles multi-turn conversation where image was sent in turn 1."""
     import core
     import struct
     import zlib
@@ -56,7 +56,7 @@ def test_multiturn_vision_inference():
 
     png_bytes = make_png(16, 16, 255, 0, 0)
     data_url = f"data:image/png;base64,{base64.b64encode(png_bytes).decode()}"
-    llm = core.load_local_model("gemma-4-e4b-it:latest")
+    llm = core.load_local_model("qwen2.5-vl-7b-instruct:latest")
     
     multiturn_messages = [
         {

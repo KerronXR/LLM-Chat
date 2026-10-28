@@ -35,8 +35,8 @@ def test_deepseek_chat_format_determination():
     format_r1 = core.get_chat_format(MODEL_ID)
     assert format_r1 == "chatml", f"Expected 'chatml' for DeepSeek-R1, got '{format_r1}'"
 
-    format_gemma = core.get_chat_format("gemma-4-e4b-it:latest")
-    assert format_gemma == "gemma", f"Expected 'gemma' for Gemma, got '{format_gemma}'"
+    format_qwen = core.get_chat_format("qwen2.5-vl-7b-instruct:latest")
+    assert format_qwen == "chatml", f"Expected 'chatml' for Qwen2.5-VL, got '{format_qwen}'"
 
 
 def test_index_html_has_deepseek_option():

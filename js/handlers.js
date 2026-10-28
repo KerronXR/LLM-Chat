@@ -30,7 +30,9 @@ export async function handleSend() {
     DOM.userInput.value = '';
     clearAttachments();
 
+    const generationId = ++activeGenerationId;
     setGenerating(true);
+    state.abortController = new AbortController();
     const hasImages = attachedFiles.some(f => f.type && f.type.startsWith('image/'));
     const messageText = text || getDefaultAttachmentPrompt(attachedFiles);
     const userMessage = await buildUserMessage(messageText, attachedFiles);
@@ -46,7 +48,7 @@ export async function handleSend() {
     tpsLive.textContent = hasImages ? '⏳ preparing vision...' : '⏳ thinking...';
     aiMsgDiv.appendChild(tpsLive);
 
-    await handleLlmGeneration(attachedFiles, aiMsgDiv, tpsLive);
+    await handleLlmGeneration(attachedFiles, aiMsgDiv, tpsLive, generationId);
 }
 
 export function handleAttachmentSelect() {
@@ -63,9 +65,12 @@ export function clearAttachment() {
 
 export { ensureJpegDataUrl };
 
-async function handleLlmGeneration(files = [], aiMsgDiv = null, tpsLive = null) {
-    const generationId = ++activeGenerationId;
-    state.abortController = new AbortController();
+async function handleLlmGeneration(files = [], aiMsgDiv = null, tpsLive = null, generationId = null) {
+    if (!generationId) generationId = ++activeGenerationId;
+    if (generationId !== activeGenerationId) return;
+    if (!state.abortController) {
+        state.abortController = new AbortController();
+    }
 
     if (!aiMsgDiv) {
         aiMsgDiv = appendMessage('ai', '...');
@@ -218,6 +223,9 @@ export function handleStopOrNew() {
             state.abortController.abort();
         }
         setGenerating(false);
+        if (!DOM.chatWindow.innerText.includes('[Generation Stopped]')) {
+            appendMessage('ai', '[Generation Stopped]', false, true);
+        }
     } else {
         handleClearChat();
     }

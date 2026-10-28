@@ -23,7 +23,7 @@ def test_sse_heartbeat_thread_emits_ping():
     handler.end_headers = MagicMock()
 
     request_payload = {
-        "model": "gemma-4-e4b-it:latest",
+        "model": "qwen2.5-vl-7b-instruct:latest",
         "web_search": "off",
         "messages": [{"role": "user", "content": "Hello"}]
     }
@@ -62,7 +62,7 @@ def test_client_disconnect_preserves_session_and_persists_history(tmp_path):
     test_history = str(tmp_path / "test_history.json")
 
     request_payload = {
-        "model": "gemma-4-e4b-it:latest",
+        "model": "qwen2.5-vl-7b-instruct:latest",
         "web_search": "off",
         "messages": [{"role": "user", "content": "Calculate answer"}]
     }
@@ -161,7 +161,7 @@ def test_concurrent_chat_requests_serialized_by_lock():
         h.send_response = MagicMock()
         h.send_header = MagicMock()
         h.end_headers = MagicMock()
-        payload = {"model": "gemma-4-e4b-it:latest", "messages": [{"role": "user", "content": "hi"}]}
+        payload = {"model": "qwen2.5-vl-7b-instruct:latest", "messages": [{"role": "user", "content": "hi"}]}
         with patch("run_ui.load_local_model", return_value=mock_llm), \
              patch("run_ui.is_session_continuation", return_value=False), \
              patch("run_ui.record_session_turn"):
@@ -198,7 +198,7 @@ def test_newer_chat_request_aborts_previous_generation():
     h1.send_header = MagicMock()
     h1.end_headers = MagicMock()
 
-    payload1 = {"model": "gemma-4-e4b-it:latest", "messages": [{"role": "user", "content": "long"}]}
+    payload1 = {"model": "qwen2.5-vl-7b-instruct:latest", "messages": [{"role": "user", "content": "long"}]}
 
     def run_first():
         with patch("run_ui.load_local_model", return_value=mock_llm), \
@@ -223,7 +223,7 @@ def test_newer_chat_request_aborts_previous_generation():
         yield {"choices": [{"delta": {"content": "quick"}}]}
     mock_llm2.create_chat_completion = short_stream
 
-    payload2 = {"model": "gemma-4-e4b-it:latest", "messages": [{"role": "user", "content": "second"}]}
+    payload2 = {"model": "qwen2.5-vl-7b-instruct:latest", "messages": [{"role": "user", "content": "second"}]}
     with patch("run_ui.load_local_model", return_value=mock_llm2), \
          patch("run_ui.is_session_continuation", return_value=False), \
          patch("run_ui.record_session_turn"):

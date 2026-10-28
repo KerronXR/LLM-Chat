@@ -4,6 +4,7 @@ Verifies that checking 'Auto Generate Images' triggers FastSD instead of LLM,
 and 'Use My Image' includes the uploaded reference image.
 """
 import pytest
+pytestmark = pytest.mark.skip(reason="FastSD CPU was removed in fadc1ad")
 from playwright.sync_api import Page, expect
 import json
 import os

@@ -11,19 +11,31 @@ export function handleToggleWebSearch() {
 }
 
 export function setWebSearchMode(mode) {
-    state.webSearchMode = mode;
+    const validMode = ['auto', 'on', 'off'].includes(mode) ? mode : 'auto';
+    state.webSearchMode = validMode;
+    try {
+        localStorage.setItem('webSearchMode', validMode);
+    } catch (e) {}
     if (!DOM.webSearchBtn) return;
     DOM.webSearchBtn.classList.remove('web-search-auto', 'web-search-on', 'web-search-off');
-    DOM.webSearchBtn.classList.add(`web-search-${mode}`);
+    DOM.webSearchBtn.classList.add(`web-search-${validMode}`);
     if (DOM.webSearchBadge) {
-        DOM.webSearchBadge.textContent = mode.toUpperCase();
+        DOM.webSearchBadge.textContent = validMode.toUpperCase();
     }
     const titles = {
         auto: 'Web Search: Auto (Auto-searches temporal/news queries)',
         on: 'Web Search: ON (Always search web)',
         off: 'Web Search: OFF (Never search web)'
     };
-    DOM.webSearchBtn.title = titles[mode] || 'Web Search';
+    DOM.webSearchBtn.title = titles[validMode] || 'Web Search';
+}
+
+export function initWebSearchMode() {
+    let saved = 'auto';
+    try {
+        saved = localStorage.getItem('webSearchMode') || 'auto';
+    } catch (e) {}
+    setWebSearchMode(saved);
 }
 
 export function renderSourcesBadge(aiMsgDiv, sources, count) {
@@ -37,4 +49,3 @@ export function renderSourcesBadge(aiMsgDiv, sources, count) {
     }
     container.innerHTML = `<span class="search-sources-summary">🌐 ${total} search results</span>`;
 }
-

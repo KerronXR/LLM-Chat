@@ -1,7 +1,7 @@
 import { state, DOM, updateContextUI } from './state.js';
 import { handleSend, handleStopOrNew, handleClearChat, handleExport, handleFileChange, clearAttachment, ensureJpegDataUrl } from './handlers.js';
 import { initClipboardPasteHandler } from './attachments.js';
-import { handleToggleWebSearch } from './search.js';
+import { handleToggleWebSearch, initWebSearchMode } from './search.js';
 import { setGenerating, toggleSidebar, appendMessage, requestWakeLock } from './ui.js';
 
 import { savePersona, getHistory, getPersona, logout } from './api.js';
@@ -84,6 +84,7 @@ DOM.chatAttachment.addEventListener('change', handleFileChange);
 
 // Web search toggle listener
 if (DOM.webSearchBtn) DOM.webSearchBtn.onclick = handleToggleWebSearch;
+initWebSearchMode();
 
 function updateSystemPrompt(model) {
     if (model.includes('deepseek') || model.includes('r1')) {

@@ -28,17 +28,50 @@ STOCK_MAP = {
 NON_TICKERS = {
     "HOW", "MUCH", "IS", "THE", "AND", "FOR", "WHAT", "WHO",
     "USD", "STOCK", "SHARE", "PRICE", "TODAY", "THIS", "THAT",
-    "TELL", "ME", "ABOUT"
+    "TELL", "ME", "ABOUT", "GTA", "RTX", "PS5", "OLED", "MSRP",
+    "NASA", "PRO", "MAX", "MIN", "CPU", "GPU", "RAM", "SSD", "LED",
 }
+
+FINANCIAL_INTENT_PATTERN = re.compile(
+    r"(\b(?:stock|stocks|share|shares|ticker|quote|market|trading|nasdaq|nyse|dividend|wall\s+street)\b|\$[A-Za-z]{1,5}\b)",
+    re.IGNORECASE,
+)
+
+WEATHER_PATTERNS = [
+    re.compile(
+        r"\b(?:weather|temperature|forecast|raining|rain|snowing|snow)\b\s+(?:like\s+)?(?:in|for|at|around)\s+([a-zA-Z][a-zA-Z\s]{1,35}?)(?:\s+(?:today|now|right\s+now|currently|tomorrow|this\s+week)|\s*[\?\.\!]|$)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:^|\b)([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)\s+(?:weather|forecast|temperature|weather\s+radar)\b",
+    ),
+    re.compile(
+        r"\bweather\b\s+(?:like\s+)?(?:in|for|at|around)?\s*([a-zA-Z\s]+?)(?:\s+today|\s+now|\s+tomorrow|\s*\?|$)",
+        re.IGNORECASE,
+    ),
+]
+
+WEATHER_STOPWORDS = {"the", "what", "is", "how", "current", "latest", "check", "today", "tomorrow", "now"}
 
 
 def extract_stock_ticker(query: str) -> str | None:
-    """Extract stock ticker symbol from conversational query."""
+    """Extract stock ticker symbol from conversational query only when financial intent is present."""
     q = query.strip()
+    if not q:
+        return None
+    dollar_m = re.search(r"\$([A-Za-z]{1,5})\b", q)
+    if dollar_m:
+        cand = dollar_m.group(1).upper()
+        if cand not in NON_TICKERS:
+            return cand
+
+    if not FINANCIAL_INTENT_PATTERN.search(q):
+        return None
+
     for name, sym in STOCK_MAP.items():
         if re.search(rf"\b{name}\b", q, re.I):
             return sym
-    lower_m = re.findall(r"\b([a-z]{1,5})\s+(?:stock|share|quote)\b", q, re.I)
+    lower_m = re.findall(r"\b([a-z]{1,5})\s+(?:stock|stocks|share|shares|quote|ticker)\b", q, re.I)
     if lower_m:
         cand = lower_m[0].upper()
         if cand not in NON_TICKERS:
@@ -47,6 +80,22 @@ def extract_stock_ticker(query: str) -> str | None:
     for c in caps:
         if c not in NON_TICKERS:
             return c
+    return None
+
+
+def extract_weather_location(query: str) -> str | None:
+    """Extract city/location name from diverse weather & temperature queries."""
+    q = query.strip()
+    if not q:
+        return None
+    for pat in WEATHER_PATTERNS:
+        m = pat.search(q)
+        if m:
+            raw_loc = m.group(1).strip()
+            words = [w for w in raw_loc.split() if w.lower() not in WEATHER_STOPWORDS]
+            loc = " ".join(words).strip()
+            if loc and len(loc) >= 2:
+                return loc
     return None
 
 

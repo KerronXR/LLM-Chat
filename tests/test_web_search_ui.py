@@ -51,6 +51,12 @@ def test_web_search_button_toggle_interaction(page):
     search_btn.click()
     assert badge.inner_text() == "ON"
     assert "web-search-on" in search_btn.get_attribute("class")
+    assert page.evaluate("localStorage.getItem('webSearchMode')") == "on"
+
+    # Reload page and verify mode persisted as ON
+    page.reload()
+    assert badge.inner_text() == "ON"
+    assert "web-search-on" in search_btn.get_attribute("class")
 
     # Click 2: ON -> OFF
     search_btn.click()
@@ -61,6 +67,16 @@ def test_web_search_button_toggle_interaction(page):
     search_btn.click()
     assert badge.inner_text() == "AUTO"
     assert "web-search-auto" in search_btn.get_attribute("class")
+
+
+def test_sources_badge_survives_streamed_tokens():
+    handlers_js_path = os.path.join(PROJECT_ROOT, "js", "handlers.js")
+    with open(handlers_js_path, "r", encoding="utf-8") as f:
+        code = f.read()
+    # Ensure search-sources-container is preserved or not wiped when streaming tokens arrive
+    assert "search-sources-container" in code or "querySelector('.message-text')" in code
+    assert "aiMsgDiv.innerHTML = ''" not in code
+
 
 
 def test_search_sources_badge_renders_count_without_chips():

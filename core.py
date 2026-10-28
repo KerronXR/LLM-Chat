@@ -249,6 +249,7 @@ def is_session_continuation(messages, model_id=None):
                     text = item.get("text", "")
                     break
         # Strip server-injected web search context for stable continuation comparison
+        text = text.split("<web_search_results>")[0]
         text = text.split("\n\n---\nWeb Search Results:")[0]
         text = text.split("\n\n[Web Search Results]")[0]
         return text.strip()

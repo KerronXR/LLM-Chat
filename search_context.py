@@ -91,21 +91,8 @@ PRODUCT_IDENTIFY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-QUERY_STRIP_PREFIXES = [
-    r"^(?:can\s+you\s+)?(?:please\s+)?search\s+(?:the\s+)?(?:web|internet|google|ddg)?\s*(?:for\s+)?",
-    r"^(?:please\s+)?look\s+up\s+",
-    r"^(?:please\s+)?find\s+(?:me\s+)?(?:information\s+about\s+)?",
-    r"^(?:you\s+need\s+to\s+)?(?:please\s+)?research\s*(?:for\s+)?",
-]
+from web_search import clean_search_query, QUERY_STRIP_PREFIXES
 
-
-def clean_search_query(text: str) -> str:
-    """Clean user prompt to extract focused search keywords (max 100 chars)."""
-    clean = text.strip()
-    for prefix in QUERY_STRIP_PREFIXES:
-        clean = re.sub(prefix, "", clean, flags=re.IGNORECASE).strip()
-    clean = re.sub(r"[\r\n\t\x00-\x1f]+", " ", clean).strip()
-    return clean[:100].strip()
 
 
 IGNORE_WORDS = re.compile(

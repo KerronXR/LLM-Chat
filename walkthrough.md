@@ -18,7 +18,7 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Qwen2.5-VL (Default, Visio
     * `GET /persona.txt`: Load persistent persona.
     * `GET /api/history`: Load JSON chat history.
     * `POST /api/login`: Validate `password == "AAaa1111$"`.
-    * `POST /api/chat`: SSE streaming response (`data: {...}\n\n`). Serialized under `_model_lock` preventing concurrent inference crashes. New request signals `_active_abort` to previous generation. Background heartbeat daemon sends `: ping\n\n` every 5.0s during prompt eval and generation preventing reverse proxy and browser idle timeouts.
+    * `POST /api/chat`: SSE streaming response (`data: {...}\n\n`). Serialized under `_model_lock` preventing concurrent inference crashes. New request signals `_active_abort` to previous generation. Background heartbeat daemon sends `: ping\n\n` every 5.0s during prompt eval and generation preventing reverse proxy and browser idle timeouts. Executes web search if triggered; isolates search context by stripping `<web_search_results>` via `_strip_ctx` before committing to `history.json` and `record_session_turn` so continuation KV-cache and history stay unpolluted. Supports web search when `web_search == 'on'` even with attachments.
     * `POST /api/history`: Save JSON chat history. Empty array triggers `reset_chat_session()`.
     * `POST /api/logout`: Expire session.
     * `POST /save_persona`: Save persona text.
@@ -31,24 +31,25 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Qwen2.5-VL (Default, Visio
     * `_configure_chat_handler(llm, model_id)`:
         - Qwen-VL: `_Qwen25VisionHandler` wrapping `Qwen25VLChatHandler`, supports both `image_url` and `image` formats in `get_image_urls` and `CHAT_FORMAT` Jinja template.
     * `_chat_session`: Global session state `{"messages": [], "tokens": 0, "model_id": None}`.
-    * `is_session_continuation(messages, model_id)`: Validates if request continues previous turn via `_norm_text`.
+    * `is_session_continuation(messages, model_id)`: Validates if request continues previous turn via `_norm_text`, stripping `<web_search_results>` tags.
     * `record_session_turn(messages, assistant_content, tokens_count, model_id)`: Commits turn.
     * `reset_chat_session()`: Clears session cache.
     * `cleanup_llm()`: Releases instance memory via `del` + `gc.collect()`.
     * `force_cleanup_port(port)`: Auto-kills ghost PID listening on port.
-- `web_search.py`: Zero-dependency DuckDuckGo Lite search provider:
+- `web_search.py`: Zero-dependency DuckDuckGo Lite search provider with concurrent live metrics:
     * `should_trigger_search(query_text, mode)`: Evaluates `auto`, `on`, `off` with temporal, news, stock, price, research heuristics and action prefix detection.
-    * `clean_search_query(text)`: Normalizes query, strips conversational prefixes, clamps to 100 chars.
-    * `sanitize_search_result(text)`: Strips HTML tags, neutralizes prompt injection markers (`<system>`, `<|turn>`, `[INST]`, `ignore previous instructions`), unescapes HTML entities.
-    * `safe_duckduckgo_search(query, max_results=5, timeout=3.5)`: SSRF-safe request to DuckDuckGo Lite with full browser headers (`Origin`, `Referer`, `Sec-Fetch-*`) preventing 202 captcha bot challenges, filters sponsored `/y.js` ads, decodes redirect links via `uddg`.
-    * `format_search_prompt_context(results, max_chars=1200)`: Formats results into `<web_search_results>` reference boundary with anti-refusal guidance.
+    * `clean_search_query(text)`: Normalizes query, strips conversational prefixes, clamps to 100 chars. Single source of truth.
+    * `sanitize_search_result(text)`: Neutralizes prompt injection markers (`<system>`, `<|turn>`, `[INST]`, `</?web_search_results>`, `ignore previous instructions`), strips HTML tags, unescapes HTML entities.
+    * `safe_duckduckgo_search(query, max_results=5, timeout=3.5)`: Concurrent execution via `ThreadPoolExecutor(max_workers=3)` running DuckDuckGo Lite search alongside `fetch_live_stock` and `fetch_live_weather`. Full browser headers prevent 202 bot challenges; filters `/y.js` ads and parses all rows until collecting `max_results` organic results.
+    * `format_search_prompt_context(results, max_chars=1500)`: Formats results into `<web_search_results>` reference boundary with anti-refusal guidance.
 - `live_data.py`: Zero-dependency real-time metrics providers:
     * `fetch_live_stock(ticker, timeout=2.5)`: Yahoo Finance chart API price, currency, day high/low.
-    * `extract_stock_ticker(query)`: Resolves company names and symbol patterns.
+    * `extract_stock_ticker(query)`: Resolves company names and symbol patterns only when financial intent (`stock`, `share`, `quote`, `ticker`, `market`, `trading`, `$TICKER`) is present.
+    * `extract_weather_location(query)`: Extracts city/location from `<city> weather/forecast`, `temperature in <city>`, and `raining in <city>`.
     * `fetch_live_weather(location, timeout=2.5)`: Real-time weather from `wttr.in`.
 - `search_context.py`: Multi-turn context-aware search query resolver:
-    * `resolve_contextual_query(messages)`: Two-pass extraction. Resolves pronouns, action directives, dependent queries, expanding price lookups with `retail price MSRP`.
-    * `extract_subject_from_history(messages)`: High-confidence search targets, product patterns, and quoted titles first; falls back to bold/capitalized entities while filtering structural phrases (`providing the best next step`, `typical listings`, `whether it is new or used`) and store names (`Amazon`, `Target`, `Walmart`, `eBay`).
+    * `resolve_contextual_query(messages)`: Two-pass extraction. Resolves pronouns, action directives, dependent queries, expanding price lookups with `retail price MSRP`. Imports `clean_search_query` from `web_search.py`.
+    * `extract_subject_from_history(messages)`: High-confidence search targets, product patterns, and quoted titles first; falls back to bold/capitalized entities while filtering structural phrases and store names.
     * `should_trigger_search_from_history(messages, mode)`: Detects auto search intent across conversation turns.
 - `index.html`: Gemini Light UI. Model selector (Qwen2.5-VL default, DeepSeek-R1), multiple file upload input, dynamic attach button, web search toggle, context meter, chat thread, pill input area.
 - `login.html`: Auth portal with Gemini Light card and button styles.
@@ -65,12 +66,12 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Qwen2.5-VL (Default, Visio
     * `attachments.js`: Staged attachments controller. Up to 3 images, preview rendering with `×` remove buttons, `Ctrl+V` clipboard paste listener, canvas JPEG normalization (768px max dim, 0.85 quality), payload preparation (`buildAttachmentsPayload`, `buildUserMessage`).
     * `state.js`: Global state management (`webSearchMode`, `attachedFiles`, `activeModel` defaults to `qwen2.5-vl-7b-instruct:latest`).
     * `dom.js`: Cached DOM element references.
-    * `search.js`: Web search mode toggler (`auto`/`on`/`off`) and compact sources summary badge (`🌐 {count} search results`).
+    * `search.js`: Web search mode toggler (`auto`/`on`/`off`), `localStorage` persistence (`initWebSearchMode`), and compact sources summary badge (`🌐 {count} search results`).
     * `markdown.js`: Streaming-safe Markdown + table parser.
     * `ui.js`: Message rendering, auto-scroll, image viewer, Screen Wake Lock API management (`requestWakeLock`/`releaseWakeLock`) keeping mobile display active during generation.
-    * `handlers.js`: Streaming SSE reader, instant thinking bubble creation, immediate UI clipboard clearing on send, mid-turn interruption support, search status updates, dynamic markdown render, live TPS counter.
+    * `handlers.js`: Streaming SSE reader, instant thinking bubble creation, immediate UI clipboard clearing on send, mid-turn interruption support, search status updates, dynamic markdown render, live TPS counter, non-destructive streaming text injection preserving sources badge.
     * `api.js`: Fetch client wrappers.
-    * `main.js`: Initialization, model select listener, attach button toggle based on `supportsVision` (active on Qwen-VL, hidden on DeepSeek), search toggle listener, `visibilitychange` handler resyncing history from `/api/history` on phone screen unlock.
+    * `main.js`: Initialization, model select listener, attach button toggle based on `supportsVision` (active on Qwen-VL, hidden on DeepSeek), search toggle listener, `initWebSearchMode()`, `visibilitychange` handler resyncing history from `/api/history` on phone screen unlock.
 - `LocalChat.bat`: Launch wrapper script for Windows.
 - `history.json`: Active chat conversation persistence.
 - `persona.txt`: System persona persistence.

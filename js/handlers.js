@@ -144,15 +144,12 @@ async function handleLlmGeneration(files = [], aiMsgDiv = null, tpsLive = null, 
                 }
                 if (json.message) {
                     aiContent += json.message.content;
-                    const textNode = aiMsgDiv.querySelector('.message-text') || aiMsgDiv;
-                    if (textNode === aiMsgDiv) {
-                        aiMsgDiv.innerHTML = '';
-                        const tb = document.createElement('div');
+                    let tb = aiMsgDiv.querySelector('.message-text');
+                    if (!tb) {
+                        tb = document.createElement('div');
                         tb.className = 'message-text';
-                        aiMsgDiv.appendChild(tb);
-                        if (tpsLive) aiMsgDiv.appendChild(tpsLive);
+                        aiMsgDiv.prepend(tb);
                     }
-                    const tb = aiMsgDiv.querySelector('.message-text');
                     tb.innerHTML = formatAiContent(aiContent);
                     scrollToBottom();
                 }

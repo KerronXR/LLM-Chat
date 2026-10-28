@@ -174,7 +174,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             msg[-1]['content'] = content_items
 
         web_search_mode = data.get('web_search', 'auto')
-        if not attachments and msg:
+        if (not attachments or web_search_mode == 'on') and msg:
             from web_search import (
                 should_trigger_search_from_history,
                 resolve_contextual_query,
@@ -202,12 +202,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         prompt_for_count = extract_text_for_count(msg).encode()
         ec, pc = 0, len(llm.tokenize(prompt_for_count))
+        def _strip_ctx(m):
+            mc = dict(m); c = mc.get('content')
+            if isinstance(c, str) and '<web_search_results>' in c: mc['content'] = c.split('<web_search_results>')[0].rstrip()
+            elif isinstance(c, list): mc['content'] = [i for i in c if not (isinstance(i, dict) and '<web_search_results>' in str(i.get('text', '')))]
+            return mc
         def _persist_turn(reply):
             if not reply: return
-            record_session_turn(msg, reply, getattr(llm, 'n_tokens', 0), mid)
+            clean_m = [_strip_ctx(m) for m in msg]
+            record_session_turn(clean_m, reply, getattr(llm, 'n_tokens', 0), mid)
             try:
                 with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(list(msg) + [{"role": "assistant", "content": reply}], f, ensure_ascii=False)
+                    json.dump(clean_m + [{"role": "assistant", "content": reply}], f, ensure_ascii=False)
             except Exception: pass
 
         try:

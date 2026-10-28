@@ -6,6 +6,7 @@ from core import (
 import atexit, signal
 
 PORT, HEARTBEAT_INTERVAL = 8000, 5.0
+_model_lock, _abort_lock, _active_abort = threading.Lock(), threading.Lock(), None
 DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.join(DIRECTORY, "images")
 HISTORY_FILE, SESSIONS_FILE, PASSWORD = os.path.join(DIRECTORY, "history.json"), os.path.join(DIRECTORY, "sessions.json"), "AAaa1111$"
@@ -104,6 +105,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         except Exception as e: logger.error(f"POST {self.path} Error: {e}", exc_info=True); self.send_error(500, str(e)) if not getattr(self.wfile, 'closed', False) else None
 
     def handle_chat(self, raw):
+        global _active_abort
+        with _abort_lock:
+            if _active_abort: _active_abort.set()
+            my_abort = threading.Event()
+            _active_abort = my_abort
         data = json.loads(raw); mid = data.get('model', 'gemma-4-e4b-it:latest'); llm = load_local_model(mid)
         self.send_response(200)
         self.send_header('Content-Type', 'text/event-stream')
@@ -201,68 +207,58 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         prompt_for_count = extract_text_for_count(msg).encode()
         ec, pc = 0, len(llm.tokenize(prompt_for_count))
-        try:
-            gen_start = None
-            assistant_reply = []
-            if not attachments and is_session_continuation(msg, mid):
-                logger.info("Fast follow-up turn: reusing active KV cache without image re-encode")
-                user_text = msg[-1].get('content', '')
-                if isinstance(user_text, list):
-                    user_text = " ".join(item.get('text', '') for item in user_text if isinstance(item, dict) and item.get('type') == 'text')
-                turn_prompt, stop_tokens = build_continuation_turn(mid, user_text)
-                new_tokens = llm.tokenize(turn_prompt.encode('utf-8'), add_bos=False)
-                llm.eval(new_tokens)
-                pc = len(new_tokens)
-                prompt_ids = llm.input_ids[:llm.n_tokens].tolist()
-                max_gen = min(2048, max(1, 4096 - llm.n_tokens - 1))
-                for out in llm.create_completion(prompt=prompt_ids, stream=True, max_tokens=max_gen, stop=stop_tokens):
-                    tok = out["choices"][0].get("text", "")
-                    if tok:
-                        if any(s in tok for s in stop_tokens):
-                            clean = tok
-                            for s in stop_tokens: clean = clean.split(s)[0]
-                            if clean:
-                                ec += 1
-                                assistant_reply.append(clean)
-                                elapsed = time.perf_counter() - gen_start if gen_start else 0.001
-                                chunk({"model": mid, "message": {"role": "assistant", "content": clean}, "done": False, "tps": round(ec/elapsed, 2)})
-                            break
-                        if gen_start is None:
-                            gen_start = time.perf_counter()
-                        ec += 1
-                        assistant_reply.append(tok)
-                        elapsed = time.perf_counter() - gen_start
-                        live_tps = round(ec / elapsed, 2) if elapsed > 0 else 0
-                        chunk({"model": mid, "message": {"role": "assistant", "content": tok}, "done": False, "tps": live_tps})
-            else:
-                for out in llm.create_chat_completion(messages=msg, stream=True, max_tokens=2048):
-                    delta = out["choices"][0]["delta"]
-                    if "content" in delta:
-                        if gen_start is None:
-                            gen_start = time.perf_counter()
-                        ec += 1
-                        assistant_reply.append(delta["content"])
-                        elapsed = time.perf_counter() - gen_start
-                        live_tps = round(ec / elapsed, 2) if elapsed > 0 else 0
-                        chunk({"model": mid, "message": {"role": "assistant", "content": delta["content"]}, "done": False, "tps": live_tps})
-            full_reply = "".join(assistant_reply)
-            record_session_turn(msg, full_reply, getattr(llm, 'n_tokens', 0), mid)
+        def _persist_turn(reply):
+            if not reply: return
+            record_session_turn(msg, reply, getattr(llm, 'n_tokens', 0), mid)
             try:
                 with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(list(msg) + [{"role": "assistant", "content": full_reply}], f, ensure_ascii=False)
+                    json.dump(list(msg) + [{"role": "assistant", "content": reply}], f, ensure_ascii=False)
             except Exception: pass
-            gen_elapsed = time.perf_counter() - gen_start if gen_start else 0
-            avg_tps = round(ec / gen_elapsed, 2) if gen_elapsed > 0 else 0
-            chunk({"model": mid, "message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192, "avg_tps": avg_tps})
+
+        try:
+            with _model_lock:
+                if my_abort.is_set(): return
+                gen_start, assistant_reply = None, []
+                if not attachments and is_session_continuation(msg, mid):
+                    logger.info("Fast follow-up turn: reusing active KV cache without image re-encode")
+                    user_text = msg[-1].get('content', '')
+                    if isinstance(user_text, list):
+                        user_text = " ".join(item.get('text', '') for item in user_text if isinstance(item, dict) and item.get('type') == 'text')
+                    turn_prompt, stop_tokens = build_continuation_turn(mid, user_text)
+                    new_tokens = llm.tokenize(turn_prompt.encode('utf-8'), add_bos=False)
+                    llm.eval(new_tokens); pc = len(new_tokens)
+                    prompt_ids = llm.input_ids[:llm.n_tokens].tolist()
+                    max_gen = min(2048, max(1, 4096 - llm.n_tokens - 1))
+                    for out in llm.create_completion(prompt=prompt_ids, stream=True, max_tokens=max_gen, stop=stop_tokens):
+                        if my_abort.is_set(): break
+                        tok = out["choices"][0].get("text", "")
+                        if tok:
+                            if any(s in tok for s in stop_tokens):
+                                clean = tok
+                                for s in stop_tokens: clean = clean.split(s)[0]
+                                if clean:
+                                    ec += 1; assistant_reply.append(clean); elapsed = time.perf_counter() - gen_start if gen_start else 0.001
+                                    chunk({"model": mid, "message": {"role": "assistant", "content": clean}, "done": False, "tps": round(ec/elapsed, 2)})
+                                break
+                            if gen_start is None: gen_start = time.perf_counter()
+                            ec += 1; assistant_reply.append(tok); elapsed = time.perf_counter() - gen_start
+                            chunk({"model": mid, "message": {"role": "assistant", "content": tok}, "done": False, "tps": round(ec/elapsed, 2) if elapsed > 0 else 0})
+                else:
+                    for out in llm.create_chat_completion(messages=msg, stream=True, max_tokens=2048):
+                        if my_abort.is_set(): break
+                        delta = out["choices"][0]["delta"]
+                        if "content" in delta:
+                            if gen_start is None: gen_start = time.perf_counter()
+                            ec += 1; assistant_reply.append(delta["content"]); elapsed = time.perf_counter() - gen_start
+                            chunk({"model": mid, "message": {"role": "assistant", "content": delta["content"]}, "done": False, "tps": round(ec/elapsed, 2) if elapsed > 0 else 0})
+                full_reply = "".join(assistant_reply)
+                _persist_turn(full_reply)
+                gen_elapsed = time.perf_counter() - gen_start if gen_start else 0
+                avg_tps = round(ec / gen_elapsed, 2) if gen_elapsed > 0 else 0
+                chunk({"model": mid, "message": {"role": "assistant", "content": ""}, "done": True, "prompt_eval_count": pc, "eval_count": ec, "context_length": 8192, "avg_tps": avg_tps})
         except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError) as e:
             logger.info("Client disconnected/locked during generation: %s", e)
-            if assistant_reply:
-                full_reply = "".join(assistant_reply)
-                record_session_turn(msg, full_reply, getattr(llm, 'n_tokens', 0), mid)
-                try:
-                    with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
-                        json.dump(list(msg) + [{"role": "assistant", "content": full_reply}], f, ensure_ascii=False)
-                except Exception: pass
+            _persist_turn("".join(assistant_reply))
         except Exception as e:
             logger.error("Chat generation failed for %s: %s", mid, e, exc_info=True)
             reset_chat_session()
@@ -270,6 +266,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception: pass
         finally:
             stop_hb.set()
+            with _abort_lock:
+                if _active_abort is my_abort: _active_abort = None
             self.close_connection = True
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):

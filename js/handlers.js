@@ -182,6 +182,10 @@ async function handleLlmGeneration(files = [], aiMsgDiv = null, tpsLive = null) 
         }
     } catch (err) {
         if (err.name === 'AbortError') {
+            if (aiContent) {
+                state.messages.push({ role: 'assistant', content: aiContent });
+                await saveHistory(state.messages);
+            }
             if (generationId === activeGenerationId) {
                 appendMessage('ai', '[Generation Stopped]', false, true);
             }

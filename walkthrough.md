@@ -21,7 +21,7 @@ Local AI env. `llama-cpp-python` LLM + web UI. Focus: Gemma-4 and Qwen2.5-VL wit
     * `GET /persona.txt`: Load persistent persona.
     * `GET /api/history`: Load JSON chat history.
     * `POST /api/login`: Validate `password == "AAaa1111$"`.
-    * `POST /api/chat`: SSE streaming response (`data: {...}\n\n`). Background heartbeat daemon sends `: ping\n\n` every 5.0s during prompt eval and generation preventing reverse proxy and browser idle timeouts.
+    * `POST /api/chat`: SSE streaming response (`data: {...}\n\n`). Serialized under `_model_lock` preventing concurrent inference crashes. New request signals `_active_abort` to previous generation. Background heartbeat daemon sends `: ping\n\n` every 5.0s during prompt eval and generation preventing reverse proxy and browser idle timeouts.
     * `POST /api/history`: Save JSON chat history. Empty array triggers `reset_chat_session()`.
     * `POST /api/logout`: Expire session.
     * `POST /save_persona`: Save persona text.
